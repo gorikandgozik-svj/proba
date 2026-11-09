@@ -7,7 +7,7 @@
 - PKCE and token-hash email confirmation handlers. No AI-provider calls, public hosting, paid services or unrelated-project changes.
 
 ## Verified during implementation
-- TypeScript, lint, unit tests and production builds passed before final documentation and dependency hardening; final check is run again before delivery.
+- Final local `npm run check` passed: strict TypeScript, ESLint without warnings, 5 unit tests and production build after dependency hardening.
 - Real Auth login with three synthetic confirmed users. Browser: profile creation, publishing, refresh persistence, like/comment, follow and Following feed.
 - Live API integration: community membership, bookmarks, preferences, private reports, recipient-only notifications, hide/restore and mutual blocks.
 - Live API integration: direct/group messages; outsider reads/writes denied; direct conversations capped at two; member cap enforced; blocked contact denied.
