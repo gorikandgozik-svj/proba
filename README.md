@@ -1,3 +1,25 @@
-# proba
+# Coding Lab
 
-Development workspace setup is proposed in a pull request.
+Минимальная среда для разработки на Next.js и TypeScript. Репозиторий не привязан к базе данных или хостингу.
+
+## Требования
+
+- Node.js 26 LTS
+- npm (поставляется с Node.js)
+
+## Команды
+
+```bash
+npm ci
+npm run dev
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+`npm run check` запускает все четыре проверки. Локальный сервер доступен по адресу http://localhost:3000. Для разработки в Codex Cloud откройте репозиторий в облачной задаче; установка выполняется командой `npm ci` при необходимости. Секреты храните в переменных окружения, а не в Git.
+
+## Работа с изменениями
+
+Создавайте ветку от `main` для каждой задачи (`feature/<краткое-имя>`), проверяйте `npm run check`, затем открывайте pull request в `main`. CI повторяет эти проверки на PR и после отправки в `main`.
