@@ -18,6 +18,11 @@
 ## Release boundaries
 - Synthetic test users are provisioned as confirmed users for automated Auth/browser tests. Actual signup email delivery is not proven by those tests; configure and verify SMTP and Auth redirects before open registration.
 - Supabase warns that leaked-password protection is disabled. No paid upgrade was enabled. Review SECURITY.md.
-- No public deployment. Saved Codex Cloud environment could not be created: the available native browser tool stopped because it could not confidently identify the current Windows browser URL. The GitHub repository and backend are ready; DEPLOYMENT.md contains the exact environment configuration.
+- No public deployment. The private Codex Cloud environment **proba** is now saved, activated and confirmed runnable. Its Node 26.13.0 setup, cached npm installation, backend variables, scoped network access and checkpoint instructions are configured. Actual signup-email delivery remains unverified.
 - Moderation operations, age/retention policy and account deletion/export requests require an operator process before a public launch. Signed media URLs remain valid until expiry; no end-to-end encryption or transcoding is claimed.
 - Synthetic QA records and Storage files are cleaned up before delivery; source contains no seeded demo content or test credentials.
+
+## Cloud follow-up — 2026-11-09
+- Onboarding reported successful Node installation, typecheck, lint, all 5 tests, production build and HTTP 200 from the app.
+- The initial draft-save error was resolved by saving through the environment panel; the app API subsequently returned ready / runnable: true.
+- No antivirus exemptions or security-control bypasses were added. Work can resume from repository checkpoints, subject to service/session limits.
