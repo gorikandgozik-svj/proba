@@ -1,0 +1,5 @@
+import { notFound,redirect } from 'next/navigation';
+import { requireUser } from '@/lib/session';
+import { Shell } from '@/components/shell';
+import { People } from '@/components/people';
+export default async function PersonPage({params}:{params:Promise<{username:string}>}){const {db,user}=await requireUser();const {username}=await params;const [profile,follows]=await Promise.all([db.from('profiles').select('*').eq('username',username).maybeSingle(),db.from('follows').select('following_id').eq('follower_id',user.id)]);if(profile.error||follows.error)throw new Error('Profile unavailable');if(!profile.data)notFound();if(profile.data.id===user.id)redirect('/profile');return <Shell section="Profile" signedIn><section className="intro"><p className="eyebrow">A PERSON, NOT AN ALGORITHM</p><h1>{profile.data.display_name}</h1></section><People people={[profile.data]} following={follows.data?.map(f=>f.following_id)??[]}/><p><a href={'/?author='+profile.data.id}>See their posts ↗</a></p></Shell>}
