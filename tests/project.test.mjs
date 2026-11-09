@@ -3,5 +3,5 @@ import test from "node:test";
 import { projectName } from "../lib/project.mjs";
 
 test("project metadata is available", () => {
-  assert.equal(projectName, "Coding Lab");
+  assert.equal(projectName, "NEXUS");
 });

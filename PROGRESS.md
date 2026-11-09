@@ -1,22 +1,23 @@
-# NEXUS progress
+# NEXUS — implementation status
 
-## Implemented
-- Phase 1 integration: password signup/login/logout, email confirmation endpoint, profile upsert, text publishing, newest-first Mixed/Following feeds, search, likes, comments, follow/unfollow.
-- Responsive UI, OS dark/light themes, focus states, empty/loading/error states.
-- Dedicated Supabase nexus project; 5 tables, constraints, indexes, RLS and posting cooldown triggers deployed with nexus_phase1 migration. No service-role key in app.
-- `.env.local` configured locally and ignored; cloud environment variables still require configuration.
+## Completed
+- Unified Phase 1–3 developer MVP: accounts/profiles, text/photo/video posts, reactions/comments/follows/search, community feeds and membership, bookmarks, hidden posts, explicit interests, notifications, reports, blocks, direct/group messages.
+- Adaptive feed modes with explainable ranking and pagination; responsive navigation; system/light/dark appearance; real pending, empty, error and loading states.
+- Dedicated Supabase nexus backend, versioned migrations synced from its actual history, private media bucket, RLS, indexes, ownership constraints, member-only conversations, cooldowns and durable write budgets.
+- PKCE and token-hash email confirmation handlers. No AI-provider calls, public hosting, paid services or unrelated-project changes.
 
-## Verified
-- TypeScript, ESLint, 3 Node tests and production build passed.
-- Live Postgres transaction: two synthetic users, profiles/post/reaction/comment/follow; cross-user profile update and author spoof denied; anonymous read denied; cooldown enforced. All test data rolled back.
-- Supabase security advisor returned no findings.
-- Browser: login screen, failed-password feedback, desktop and mobile layout without horizontal overflow.
+## Verified during implementation
+- TypeScript, lint, unit tests and production builds passed before final documentation and dependency hardening; final check is run again before delivery.
+- Real Auth login with three synthetic confirmed users. Browser: profile creation, publishing, refresh persistence, like/comment, follow and Following feed.
+- Live API integration: community membership, bookmarks, preferences, private reports, recipient-only notifications, hide/restore and mutual blocks.
+- Live API integration: direct/group messages; outsider reads/writes denied; direct conversations capped at two; member cap enforced; blocked contact denied.
+- Private Storage: upload/download, signed URL, owner-path restriction, anonymous denial, blocked-user denial and attachment-owner spoof denial.
+- Browser: upload and play a real 10-second MP4, create persistent conversation/message, create community, save preferences, responsive seven-item navigation and theme persistence.
+- Production dependency audit clean; scoped minimatch override also removed the lint-toolchain advisories. No service-role credential in application code or Git.
 
-## Blockers / limits
-- Full signup → confirmation email → authenticated browser journey has not been verified. Configure Supabase Auth Site URL and confirmation template, then use a real email address.
-- No public deployment. Image uploads are not enabled. Phase 2+ intentionally pending until Phase 1 E2E passes.
-- npm reports 8 moderate dependency vulnerabilities (existing toolchain). ESLint 9 is retained for Next config compatibility; update with verified ecosystem support.
-- SQL assertions impersonate roles for database testing; they do not prove Auth signup/login behavior.
-
-## Next milestone
-Complete real email E2E with two accounts, test authenticated mobile flows, add image upload with private storage policies, improve feed pagination and moderation before public deployment.
+## Release boundaries
+- Synthetic test users are provisioned as confirmed users for automated Auth/browser tests. Actual signup email delivery is not proven by those tests; configure and verify SMTP and Auth redirects before open registration.
+- Supabase warns that leaked-password protection is disabled. No paid upgrade was enabled. Review SECURITY.md.
+- No public deployment. Saved Codex Cloud environment could not be created: the available native browser tool stopped because it could not confidently identify the current Windows browser URL. The GitHub repository and backend are ready; DEPLOYMENT.md contains the exact environment configuration.
+- Moderation operations, age/retention policy and account deletion/export requests require an operator process before a public launch. Signed media URLs remain valid until expiry; no end-to-end encryption or transcoding is claimed.
+- Synthetic QA records and Storage files are cleaned up before delivery; source contains no seeded demo content or test credentials.

@@ -1,0 +1,12 @@
+import Link from 'next/link';
+import { requireUser } from '@/lib/session';
+import { Shell } from '@/components/shell';
+import { Submit } from '@/components/submit';
+import { topics } from '@/lib/ranking.mjs';
+import { createCommunity,membership } from '../social-actions';
+export default async function Communities({searchParams}:{searchParams:Promise<{notice?:string;topic?:string}>}){
+ const {db,user}=await requireUser();const params=await searchParams;
+ let query=db.from('communities').select('*').order('created_at',{ascending:false}).limit(50);if(topics.includes(params.topic??''))query=query.eq('topic',params.topic!);
+ const [communities,members]=await Promise.all([query,db.from('memberships').select('community_id').eq('user_id',user.id)]);if(communities.error||members.error)throw new Error('Communities could not load');const ids=members.data?.map(m=>m.community_id)??[];
+ return <Shell section="Communities" signedIn><section className="intro"><p className="eyebrow">A SHARED CURIOSITY</p><h1>Small circles.<br/><em>Bigger conversations.</em></h1><p>Join a community to publish to its shared feed.</p></section>{params.notice&&<p role="status" className="notice">{params.notice}</p>}<div className="chips"><Link href="/communities">All</Link>{topics.map(t=><Link key={t} href={'/communities?topic='+t}>{t}</Link>)}</div>{communities.data?.length===0&&<div className="card empty"><h2>The next community starts with you.</h2><p>Create a place for a shared interest.</p></div>}{communities.data?.map(c=><article className="card" key={c.id}><span className="topic">{c.topic}</span><h2><Link href={'/?community='+c.id}>{c.name} ↗</Link></h2><p>{c.description}</p><form action={membership}><input type="hidden" name="community_id" value={c.id}/><input type="hidden" name="remove" value={ids.includes(c.id)?'yes':'no'}/><input type="hidden" name="returnTo" value="/communities"/><Submit>{ids.includes(c.id)?'Leave community':'Join community'}</Submit></form></article>)}<details className="card"><summary>Create a community</summary><form className="stack" action={createCommunity}><input type="hidden" name="returnTo" value="/communities"/><label>Name<input name="name" minLength={3} maxLength={50} required/></label><label>Description<textarea name="description" maxLength={500} required/></label><label>Topic<select name="topic">{topics.map(t=><option key={t}>{t}</option>)}</select></label><Submit className="primary">Create community</Submit></form></details></Shell>
+}

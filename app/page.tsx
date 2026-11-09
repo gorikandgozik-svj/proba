@@ -1,32 +1,41 @@
 import Link from 'next/link';
-import { configured, database } from '@/lib/supabase';
-import { authenticate, signout, publish, react, comment, follow } from './actions';
-type Person = { id: string; username: string; display_name: string; bio: string };
-type Post = { id: string; body: string; created_at: string; profiles: Person; reactions: { user_id: string }[]; comments: { id: string; body: string; profiles: Person }[] };
-export default async function Home({ searchParams }: { searchParams: Promise<{ notice?: string; q?: string; mode?: string }> }) {
-  const params = await searchParams; const db = configured() ? await database() : null;
-  const user = db ? (await db.auth.getUser()).data.user : null;
-  let posts: Post[] = []; let people: Person[] = []; let following: string[] = []; let problem = '';
-  const search = (params.q ?? '').replace(/[^\p{L}\p{N}_ ]/gu, '').slice(0, 60);
-  if (db && user) {
-    const follows = await db.from('follows').select('following_id').eq('follower_id', user.id);
-    following = (follows.data ?? []).map(row => row.following_id);
-    let query = db.from('posts').select('*,profiles!posts_author_id_fkey(*),reactions(user_id),comments(id,body,profiles!comments_author_id_fkey(*))').order('created_at', { ascending: false }).limit(30);
-    if (search) query = query.ilike('body', `%${search}%`);
-    if (params.mode === 'following') query = query.in('author_id', [...following, user.id]);
-    const result = await query; posts = (result.data ?? []) as unknown as Post[];
-    let directory = db.from('profiles').select('*').neq('id', user.id).order('username').limit(12);
-    if (search) directory = directory.ilike('username', `%${search}%`);
-    const resultPeople = await directory; people = resultPeople.data ?? [];
-    if (result.error || resultPeople.error || follows.error) problem = 'Could not load your feed. Check the backend connection and refresh.';
-  }
-  return <div className="shell">
-    <aside className="sidebar"><Link href="/" className="brand">✳ <span>NEXUS</span></Link><p className="tagline">A little closer<br/>to your world.</p><nav aria-label="Primary"><Link href="/">⌂ <span>Home</span></Link><Link href="/#discover">◎ <span>Explore</span></Link><Link href="/profile">◉ <span>Profile</span></Link></nav><div className="future"><small>ON THE HORIZON</small><p>Watch · Communities<br/>Messages · Notifications</p><small>Available in future milestones.</small></div><p className="sidebar-foot">A space for people.<br/><strong>Not just their content.</strong></p></aside>
-    <main className="feed"><header><span className="eyebrow">YOUR DAILY CONNECTION</span><span className="status">● EARLY ACCESS</span></header><section className="intro"><p className="eyebrow">ONE WORLD. MANY PERSPECTIVES.</p><h1>Find your people.<br/><em>Follow your curiosity.</em></h1><p>Ideas, conversations and the people behind them.<br/>All connected, in one place.</p></section><div className="heading"><h2>Your orbit</h2><small>Made of real connections ↗</small></div><div className="tabs"><Link href="/" aria-current={params.mode !== 'following' ? 'page' : undefined}>Mixed</Link><Link href="/?mode=following" aria-current={params.mode === 'following' ? 'page' : undefined}>Following</Link><small>Newest first · your choice</small></div>
-    {params.notice && <p className="notice" role="status">{params.notice}</p>}{problem && <p className="notice" role="alert">{problem}</p>}
-    {!db ? <section className="card empty"><span className="symbol">✳</span><h2>Your world starts here.</h2><p>Connect the Supabase backend to enable accounts and a live feed. Setup instructions are in README.md.</p></section> : !user ? <section className="card"><p className="eyebrow">WELCOME TO NEXUS</p><h2>Good conversations start with you.</h2><p>Join to publish, connect and shape your feed.</p><form action={authenticate} className="stack"><label>Email<input name="email" type="email" autoComplete="email" required/></label><label>Password<input name="password" type="password" autoComplete="current-password" minLength={12} maxLength={128} required/></label><div className="actions"><button className="primary" name="intent" value="login">Sign in</button><button name="intent" value="signup">Create account</button></div><small>Use at least 12 characters. Confirm your email before signing in.</small></form></section> : <>
-    <form action={publish} className="card composer"><label htmlFor="post">What’s on your mind?</label><textarea id="post" name="body" placeholder="An idea, a question, a new perspective…" required maxLength={2000}/><div className="actions"><small>Text · up to 2,000 characters</small><button className="primary">Publish ↗</button></div></form>
-    {posts.length === 0 && !problem && <div className="card empty"><h2>{search ? 'No matching conversations.' : 'A fresh start, together.'}</h2><p>{search ? 'Try another phrase or username.' : 'Share your first thought or discover someone new.'}</p></div>}
-    {posts.map(post => <article className="card" key={post.id}><div className="person"><span className="avatar">{post.profiles.display_name.slice(0, 1)}</span><div><strong>{post.profiles.display_name}</strong><small>@{post.profiles.username} · {new Date(post.created_at).toLocaleDateString('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</small></div></div><p className="post-body">{post.body}</p><div className="actions"><form action={react}><input type="hidden" name="post_id" value={post.id}/><input type="hidden" name="remove" value={post.reactions.some(r => r.user_id === user.id) ? 'yes' : 'no'}/><button aria-pressed={post.reactions.some(r => r.user_id === user.id)}>♡ {post.reactions.length} Likes</button></form><small>◌ {post.comments.length} comments</small></div><details><summary>Join the conversation</summary>{post.comments.map(c => <div className="comment" key={c.id}><strong>{c.profiles.display_name}</strong><p>{c.body}</p></div>)}<form className="row" action={comment}><input type="hidden" name="post_id" value={post.id}/><input name="body" aria-label="Write a comment" placeholder="Add your perspective…" required maxLength={500}/><button>Reply</button></form></details></article>)} </>}
-    </main><aside className="rightbar"><form action="/" className="stack search"><label htmlFor="search">Search NEXUS</label><div className="row"><input id="search" name="q" defaultValue={search} placeholder="People and conversations" maxLength={60}/><button aria-label="Search">↗</button></div></form><section id="discover" className="discover"><p className="eyebrow">WIDEN YOUR WORLD</p><h2>New connections</h2>{people.map(person => <div className="person" key={person.id}><span className="avatar">{person.display_name.slice(0, 1)}</span><div><strong>{person.display_name}</strong><small>@{person.username}</small></div><form action={follow}><input type="hidden" name="profile_id" value={person.id}/><input type="hidden" name="remove" value={following.includes(person.id) ? 'yes' : 'no'}/><button aria-label={`${following.includes(person.id) ? 'Unfollow' : 'Follow'} ${person.username}`}>{following.includes(person.id) ? '✓' : '+'}</button></form></div>)}{people.length === 0 && <p className="muted">{user ? 'New people will appear here as they join.' : 'Sign in to discover people and build your orbit.'}</p>}</section><div className="manifesto"><span className="symbol">✳</span><h2>More perspective.<br/>Less noise.</h2><p>A thoughtful space to share what matters — and find something that moves you.</p><span className="orbit" aria-hidden="true">◎</span></div>{user && <div className="account-links"><Link href="/profile">Edit profile ↗</Link><form action={signout}><button>Sign out</button></form></div>}<footer>NEXUS · A connected beginning.<br/>Phase 1 · Text & people</footer></aside></div>;
+import { redirect } from 'next/navigation';
+import { configured,database } from '@/lib/supabase';
+import { identifier } from '@/lib/validation.mjs';
+import { rankFeed } from '@/lib/ranking.mjs';
+import { Shell } from '@/components/shell';
+import { AuthForm } from '@/components/auth';
+import { Compose } from '@/components/compose';
+import { PostCard,type Post } from '@/components/post';
+import { People } from '@/components/people';
+type Query={notice?:string;q?:string;mode?:string;community?:string;post?:string;author?:string;page?:string;code?:string;published?:string};
+export default async function Home({searchParams}:{searchParams:Promise<Query>}) {
+ const params=await searchParams;
+ if(params.code) redirect('/auth/callback?code='+encodeURIComponent(params.code));
+ const db=configured()?await database():null;const user=db?(await db.auth.getUser()).data.user:null;
+ const mode=['following','video','discussions','saved'].includes(params.mode??'')?params.mode:'mixed';
+ const page=Math.min(100,Math.max(0,Number.parseInt(params.page??'0')||0));
+ const search=(params.q??'').replace(/[^\p{L}\p{N}_ ]/gu,'').slice(0,60);
+ let posts:Post[]=[];let people=[] as {id:string;username:string;display_name:string;bio:string}[];let following:string[]=[];let communities:{id:string;name:string}[]=[];let problem='';
+ if(db&&user){
+  const [follows,prefs,members,directory]=await Promise.all([db.from('follows').select('following_id').eq('follower_id',user.id),db.from('preferences').select('interests').eq('user_id',user.id).maybeSingle(),db.from('memberships').select('community_id').eq('user_id',user.id),search?db.from('profiles').select('*').ilike('username',`%${search}%`).neq('id',user.id).limit(8):Promise.resolve({data:[],error:null})]);
+  following=follows.data?.map(r=>r.following_id)??[];people=directory.data??[];
+  const ids=members.data?.map(m=>m.community_id)??[];
+  if(ids.length){const result=await db.from('communities').select('id,name').in('id',ids);communities=result.data??[];if(result.error)problem='Could not load your communities.';}
+  let query=db.from('posts').select('*,profiles!posts_author_id_fkey(*),communities(name),media(path),reactions(user_id),reaction_count:reactions(count),comments(id,body,profiles!comments_author_id_fkey(*)),comment_count:comments(count),bookmarks(user_id)').eq('reactions.user_id',user.id).order('created_at',{ascending:false}).order('created_at',{referencedTable:'comments',ascending:false}).limit(10,{referencedTable:'comments'}).range(page*20,page*20+19);
+  if(search)query=query.ilike('body',`%${search}%`);
+  if(mode==='following')query=query.in('author_id',[...following,user.id]);
+  if(mode==='discussions')query=query.not('community_id','is',null);
+  if(mode==='video')query=query.eq('media_kind','video');
+  for(const [key,column] of [['community','community_id'],['post','id'],['author','author_id']] as const){const id=identifier.safeParse(params[key]);if(id.success)query=query.eq(column,id.data);}
+  if(mode==='saved'){const saved=await db.from('bookmarks').select('post_id').eq('user_id',user.id);query=query.in('id',saved.data?.map(b=>b.post_id)??[]);if(saved.error)problem='Could not load saved posts.';}
+  const result=await query;const rows=(result.data??[]) as unknown as (Post&{media:{path:string}|null})[];
+  posts=await Promise.all(rows.map(async post=>{if(!post.media)return post;const signed=await db.storage.from('nexus-media').createSignedUrl(post.media.path,300);return {...post,media_url:signed.data?.signedUrl??null};}));
+  if(mode==='mixed')posts=rankFeed(posts,prefs.data?.interests??[]);
+  if(result.error||follows.error||prefs.error||members.error||directory.error)problem='Could not load your feed. Check the backend connection and retry.';
+ }
+ const pageLink=(next:number)=>{const query=new URLSearchParams();for(const [key,value]of Object.entries(params))if(value&&key!=='page'&&key!=='notice'&&key!=='code')query.set(key,value);query.set('page',String(next));return '/?'+query.toString();};
+ return <Shell section={mode==='video'?'Watch':'Home'} signedIn={Boolean(user)}><section className="intro"><p className="eyebrow">ONE WORLD. MANY PERSPECTIVES.</p><h1>Find your people.<br/><em>Follow your curiosity.</em></h1><p>Ideas, conversations and the people behind them.<br/>All connected, in one place.</p></section><div className="heading"><h2>{search?'Search results':'Your orbit'}</h2><Link href="/preferences"><small>Shape your feed ↗</small></Link></div><div className="tabs">{[['Mixed','mixed'],['Following','following'],['Video','video'],['Discussions','discussions'],['Saved','saved']].map(([label,value])=>{const q=new URLSearchParams();if(value!=='mixed')q.set('mode',value);if(params.community)q.set('community',params.community);if(search)q.set('q',search);return <Link key={value} href={'/?'+q.toString()} aria-current={mode===value?'page':undefined}>{label}</Link>})}</div>{params.notice&&<p className="notice" role="status">{params.notice}</p>}{problem&&<p className="notice" role="alert">{problem}</p>}
+ {!db?<section className="card empty"><span className="symbol">✳</span><h2>Your world starts here.</h2><p>Add the Supabase environment variables to connect your live backend. See README.md.</p></section>:!user?<AuthForm/>:<><Compose key={params.published??"composer"} communities={communities}/>{search&&<People people={people} following={following}/>}<p className="feed-explanation">{mode==='mixed'?'Ranked within this page by freshness + your chosen interests.':'Newest first. Your connections and preferences stay with you.'}</p>{posts.length===0&&!problem&&<section className="card empty"><h2>{search?'No matching conversations.':'Room for a new perspective.'}</h2><p>Share something or explore a community that interests you.</p><Link href="/explore">Find your people ↗</Link></section>}{posts.map(post=><PostCard key={post.id} post={post} userId={user.id} returnTo={pageLink(page)}/>)}<div className="actions pagination">{page>0&&<Link href={pageLink(page-1)}>← Newer posts</Link>}{posts.length===20&&<Link href={pageLink(page+1)}>Older posts →</Link>}</div></>}
+ </Shell>
 }
