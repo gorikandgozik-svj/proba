@@ -1,5 +1,12 @@
 # Правила работы агентов
 
+## NEXUS architecture
+- App Router Server Components read Supabase; `app/actions.ts` owns mutations. Validate inputs in `lib/validation.mjs` and authenticate every action.
+- `lib/supabase.ts` uses the publishable key and cookies; `proxy.ts` refreshes sessions. Never add service-role keys to browser or app code.
+- `db/phase1.sql` is the already-applied initial schema. Future changes require new migrations and RLS tests, never rerun this file on an existing database.
+- Keep all content as escaped text. Do not add simulated data, AI, media or navigation features presented as working.
+- Update PROGRESS.md with actual checks and blockers after each milestone. Phase 2 starts only after real email E2E verification.
+
 - Перед изменением кода прочитайте файлы, относящиеся к задаче, и существующие инструкции проекта.
 - Сохраняйте текущую архитектуру и используйте установленные библиотеки. Добавляйте зависимость только при конкретной необходимости; объясняйте её в PR.
 - Делайте минимальные, но законченные изменения. Не меняйте несвязанные файлы и не создавайте демонстрационные функции без запроса.
