@@ -1,0 +1,97 @@
+name: WAYPACK 5.0 Google LiteRT Real Neural Ranker
+on:
+  push:
+    branches: [waypack-google-litert-v5]
+    paths:
+      - 'android/**'
+      - '.github/workflows/waypack-google-litert-v5.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/waypack-google-litert-v5.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  android-apk:
+    name: Train, measure, compile and sign tiny Google LiteRT APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run app logic and native bridge regression checks
+        run: node --test android/tests/release-quality.test.cjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned training tool
+        run: python -m pip install --disable-pip-version-check "tensorflow-cpu==2.19.1"
+      - name: Train task-specific RankNet and run genuine TFLite CPU inference tests
+        run: |
+          set -euxo pipefail
+          export TF_CPP_MIN_LOG_LEVEL=2
+          export OMP_NUM_THREADS=2
+          export TF_NUM_INTRAOP_THREADS=2
+          export TF_NUM_INTEROP_THREADS=2
+          python android/tools/train_waypack_ranker.py
+          test -s android/app/src/main/assets/waypack-ranker.tflite
+          test "$(stat -c %s android/app/src/main/assets/waypack-ranker.tflite)" -lt 100000
+          cat android/tests/waypack-ranker-audit.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install Android SDK platform and build tools
+        run: |
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          SDKMANAGER=""
+          for bin in "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager; do
+            if test -x "$bin"; then SDKMANAGER="$bin"; break; fi
+          done
+          test -x "$SDKMANAGER"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build Google LiteRT standalone Android APK
+        run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
+      - name: Validate real model, signature, package and sandbox permissions
+        run: |
+          set -euxo pipefail
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" | tail -1
+          unzip -l "$APK" | grep assets/waypack-ranker.tflite
+          if unzip -l "$APK" | grep -Eq 'assets/model.gguf|libllama.so'; then exit 1; fi
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | grep -q android.permission.INTERNET; then exit 1; fi
+          test "$(stat -c %s "$APK")" -lt 40000000
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "package: name='ai.waypack.litert' versionCode='11' versionName='5.0.0'"
+          mkdir -p release
+          cp "$APK" release/WAYPACK-GOOGLE-LITERT-5.0.0.apk
+          cp android/tests/waypack-ranker-audit.json release/MODEL-QUALITY-AUDIT.json
+          sha256sum release/WAYPACK-GOOGLE-LITERT-5.0.0.apk > release/SHA256SUMS.txt
+      - name: Upload verified APK and model audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: WAYPACK-GOOGLE-LITERT-5.0.0-APK
+          path: release/*
+          retention-days: 30
+          if-no-files-found: error
+      - name: Publish one-click GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG=waypack-google-litert-v5.0.0
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/WAYPACK-GOOGLE-LITERT-5.0.0.apk release/SHA256SUMS.txt release/MODEL-QUALITY-AUDIT.json --clobber
+          else
+            gh release create "$TAG" release/WAYPACK-GOOGLE-LITERT-5.0.0.apk release/SHA256SUMS.txt release/MODEL-QUALITY-AUDIT.json --target "$GITHUB_SHA" --title "WAYPACK 5 Google LiteRT" --notes "Real Google LiteRT CPU runtime and a tiny purpose-trained neural ranker. Synthetic travel scenarios, NOT pretrained Gemini or Gemma weights. Offline immediate fallback, no API key, Android 8+ and ARM. This debug-signed beta was automatically tested; not yet physically benchmarked on a phone."
+          fi

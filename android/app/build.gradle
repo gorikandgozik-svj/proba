@@ -1,0 +1,20 @@
+plugins { id 'com.android.application' }
+android {
+  namespace 'ai.waypack.app'
+  compileSdk 35
+  defaultConfig {
+    applicationId 'ai.waypack.litert'
+    minSdk 26
+    targetSdk 35
+    versionCode 11
+    versionName '5.0.0'
+    // Google LiteRT runs locally on the CPU on older Android devices.
+    ndk { abiFilters 'arm64-v8a','armeabi-v7a' }
+  }
+  buildTypes { release { minifyEnabled false } }
+  androidResources { noCompress += ['tflite'] }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies {
+  implementation 'com.google.ai.edge.litert:litert:2.3.0'
+}

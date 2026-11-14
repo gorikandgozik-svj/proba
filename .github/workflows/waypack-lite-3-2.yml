@@ -1,0 +1,133 @@
+name: WAYPACK AI Lite 3.2 Full QA
+on:
+  push:
+    branches: [waypack-lite-3-2-qa]
+    paths:
+      - 'android/**'
+      - '.github/workflows/waypack-lite-3-2-qa.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/waypack-lite-3-2-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  android-apk:
+    name: Build and test Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify bundled app scripts and offline features
+        run: |
+          node <<'NODE'
+          const fs = require('fs'), vm = require('node:vm');
+          const html = fs.readFileSync('android/app/src/main/assets/index.html','utf8');
+          const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+          if(scripts.length<1) throw Error('Missing offline engine or UI script');
+          scripts.forEach((script,i)=>new vm.Script(script[1],{filename:'inline-'+i+'.js'}));
+          for (const tag of ['PackingEngine','localStorage','WAYPACK','if(isNative)apiBase=','waypackNativeResolve','runModel','Content-Security-Policy'])
+            if(!html.includes(tag)) throw Error('Missing required feature: '+tag);
+          console.log('OK: '+scripts.length+' JS blocks parsed; native offline and Gemma on-device bridge present');
+          NODE
+      - name: Run packing engine, security and lifecycle regression tests
+        run: node --test android/tests/release-quality.test.cjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install required Android SDK packages
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER=""
+          for bin in "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager; do
+            if test -x "$bin"; then SDKMANAGER="$bin"; break; fi
+          done
+          test -x "$SDKMANAGER" || { echo "Android SDK command-line tools missing"; exit 1; }
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+      - name: Fetch pinned 183 MB Gemma IQ2 model and pinned llama.cpp engine
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git android/app/src/main/cpp/llama.cpp
+          git -C android/app/src/main/cpp/llama.cpp fetch --depth 1 origin a956a852c9c8bc1fb07206364838ddef299178c0
+          git -C android/app/src/main/cpp/llama.cpp checkout --detach a956a852c9c8bc1fb07206364838ddef299178c0
+          MODEL=android/app/src/main/assets/model.gguf
+          curl --fail --location --retry 4 --retry-delay 4 --output "$MODEL" "https://huggingface.co/unsloth/gemma-3-270m-it-GGUF/resolve/dcdf8757761db0c5a9ad973e33eea14be36bf087/gemma-3-270m-it-UD-IQ2_M.gguf?download=true"
+          test "$(stat -c %s "$MODEL")" -gt 170000000
+          test "$(stat -c %s "$MODEL")" -lt 210000000
+          test "$(head -c 4 "$MODEL")" = "GGUF"
+          echo "08b4c8b88efb38ea0b59aa0dd4c8259ada515fd66448136df737a273b7da2d47  $MODEL" | sha256sum --check
+          curl --fail --location --retry 3 --output android/app/src/main/assets/GEMMA_TERMS_OF_USE.txt "https://raw.githubusercontent.com/google-gemma/docs/main/docs/resources/terms.md"
+          test "$(wc -c < android/app/src/main/assets/GEMMA_TERMS_OF_USE.txt)" -gt 5000
+      - name: Build actual llama.cpp CPU test runner
+        run: |
+          set -euxo pipefail
+          cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-host \
+            -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_TOOLS=OFF \
+            -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_COMMON=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF
+          cmake --build /tmp/waypack-host --target llama --parallel 3
+          g++ -std=c++17 -O2 \
+            -I android/app/src/main/cpp/llama.cpp/include \
+            -I android/app/src/main/cpp/llama.cpp/ggml/include \
+            android/tests/gemma_smoke.cpp \
+            -L /tmp/waypack-host/bin -Wl,-rpath,/tmp/waypack-host/bin \
+            -lllama -lggml -o /tmp/waypack-smoke
+      - name: Real model test for beach ski and prompt injection
+        run: |
+          set -euxo pipefail
+          for SCENARIO in beach ski injection; do
+            LD_LIBRARY_PATH=/tmp/waypack-host/bin timeout 50s /tmp/waypack-smoke android/app/src/main/assets/model.gguf "$SCENARIO" > "/tmp/waypack-$SCENARIO.log" 2>&1 || {
+              tail -n 70 "/tmp/waypack-$SCENARIO.log"
+              exit 1
+            }
+            tail -n 15 "/tmp/waypack-$SCENARIO.log"
+            grep -q 'SMOKE_VALID_FORMAT=true' "/tmp/waypack-$SCENARIO.log"
+          done
+      - name: Compile native application
+        run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
+      - name: Verify APK integrity and package ID
+        run: |
+          set -euxo pipefail
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" | tail -1
+          unzip -l "$APK" | grep 'assets/model.gguf'
+          unzip -l "$APK" | grep 'lib/arm64-v8a/libwaypack-ai.so'
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | grep -q android.permission.INTERNET; then exit 1; fi
+          test "$(stat -c %s "$APK")" -lt 210000000
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.lite.'
+          mkdir -p release
+          cp "$APK" release/WAYPACK-AI-LITE-3.2.0.apk
+          cp android/app/src/main/assets/GEMMA_NOTICE.txt release/GEMMA_NOTICE.txt
+          sha256sum release/WAYPACK-AI-LITE-3.2.0.apk > release/SHA256SUMS.txt
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WAYPACK-AI-LITE-3.2.0-APK
+          path: release/*
+          retention-days: 30
+          if-no-files-found: error
+      - name: Publish public one-click APK download
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          TAG=waypack-ai-lite-v3.2.0
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/WAYPACK-AI-LITE-3.2.0.apk release/SHA256SUMS.txt release/GEMMA_NOTICE.txt --clobber
+          else
+            gh release create "$TAG" release/WAYPACK-AI-LITE-3.2.0.apk release/SHA256SUMS.txt release/GEMMA_NOTICE.txt --target "$GITHUB_SHA" --title "WAYPACK AI Lite 3.2.0" --notes "Gemma 3 270M UD-IQ2_M quantization included inside APK; pinned SHA256, grammar-limited native inference, actual C API tests and regression suite. Offline, no API keys. Model subject to Google Gemma Terms of Use: https://ai.google.dev/gemma/terms. ARM64 only. Debug-signed beta; actual Android device performance not yet verified."
+          fi
