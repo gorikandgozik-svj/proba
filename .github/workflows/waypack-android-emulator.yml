@@ -43,16 +43,16 @@ jobs:
             set -euxo pipefail
             gradle -p android :app:assembleDebug --no-daemon
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            adb shell pm clear ai.waypack.app
+            adb shell pm clear ai.waypack.cloud
             adb logcat -c
-            adb shell am start -W -n ai.waypack.app/.MainActivity
+            adb shell am start -W -n ai.waypack.cloud/ai.waypack.app.MainActivity
             sleep 10
-            PID="$(adb shell pidof ai.waypack.app | tr -d '\r')"
+            PID="$(adb shell pidof ai.waypack.cloud | tr -d '\r')"
             test -n "$PID"
-            adb shell dumpsys activity activities | grep "ai.waypack.app"
+            adb shell dumpsys activity activities | grep "ai.waypack.cloud"
             adb exec-out screencap -p > waypack-android-smoke.png
             test -s waypack-android-smoke.png
-            if adb logcat -d -s AndroidRuntime:E | grep -E 'FATAL EXCEPTION|Process: ai.waypack.app'; then
+            if adb logcat -d -s AndroidRuntime:E | grep -E 'FATAL EXCEPTION|Process: ai.waypack.cloud'; then
               echo "Android runtime crash detected"
               exit 1
             fi
