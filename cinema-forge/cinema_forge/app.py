@@ -20,7 +20,7 @@ CYAN = '#58dfcb'
 class Studio(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('CINEMA FORGE  •  AI Video Studio 0.2')
+        self.title('CINEMA FORGE  •  AI Video Studio 0.2.1')
         self.geometry('1120x825')
         self.minsize(940, 720)
         self.configure(bg=BG)
@@ -85,7 +85,7 @@ class Studio(tk.Tk):
         canvas.bind_all('<Button-4>', lambda _: canvas.yview_scroll(-3, 'units'))
         canvas.bind_all('<Button-5>', lambda _: canvas.yview_scroll(3, 'units'))
         self._label(root, 'CINEMA  FORGE', size=28, color=CYAN, bold=True).pack(anchor='w')
-        self._label(root, 'STUDIO v0.2   /   12 SCENES  ·  AI  ·  VOICES  ·  UHD EXPORT',
+        self._label(root, 'STUDIO v0.2.1   /   12 SCENES  ·  AI  ·  VOICES  ·  UHD EXPORT',
                     size=10, color=MUTED).pack(anchor='w', pady=(0, 15))
 
         card = tk.Frame(root, bg=PANEL, padx=18, pady=14)
