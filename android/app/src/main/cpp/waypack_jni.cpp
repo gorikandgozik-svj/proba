@@ -50,7 +50,7 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     llama_context_params cp=llama_context_default_params();
     cp.n_ctx=std::max(768,actual+144);
     cp.n_ubatch=128;
-    cp.n_batch=512;
+    cp.n_batch=cp.n_ctx;
     cp.n_threads=std::min(4, std::max(2,(int)std::thread::hardware_concurrency()));
     cp.n_threads_batch=cp.n_threads;
     llama_context * ctx=llama_init_from_model(loadedModel,cp);
