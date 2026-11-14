@@ -184,58 +184,92 @@ public final class MainActivity extends Activity {
         addCandidate(result,packed,"Компактные влажные салфетки","hygiene","Для рук в дороге");
         return result;
     }
-    private String makePrompt(JSONObject data, java.util.List<JSONObject> choices) throws Exception {
-        JSONObject p=data.getJSONObject("profile");
-        StringBuilder b=new StringBuilder(950);
-        b.append("<start_of_turn>user\n");
-        b.append("Выбери ТРИ самых полезных предмета из списка для поездки. ");
-        b.append("Предметы уже проверены: их нет в чемодане. ");
-        b.append("Ответь только ТРЕМЯ разными номерами через запятую, например 2,4,1. Без слов.\n");
-        b.append("Направление: ").append(clipped(p.optString("country"),35)).append(", ")
-            .append(clipped(p.optString("city"),35)).append(". ");
-        b.append("Дней: ").append(Math.max(1,Math.min(60,p.optInt("days",7)))).append(". ");
-        b.append("Дата: ").append(clipped(p.optString("date"),10)).append(". ");
+
+    // 18 float features, exact schema shared with tools/train_waypack_ranker.py.
+    // Tags: beach, hiking, winter sports, photo/video, universal travel.
+    private static float[] features(JSONObject data,JSONObject item){
+        float[] f=new float[18];
+        String name=normalized(item.optString("name"));
+        int tag=4;
+        if(name.contains("гермомеш")||name.contains("микрофибр")||name.contains("пляж")||name.contains("мокрых"))tag=0;
+        else if(name.contains("налобн")||name.contains("дождевик")||name.contains("мозол")||name.contains("рюкзак"))tag=1;
+        else if(name.contains("бафф")||name.contains("грелк")||name.contains("горнолыж"))tag=2;
+        else if(name.contains("объектив")||name.contains("карт")&&name.contains("памят")||name.contains("кабел"))tag=3;
+        f[tag]=1f;
         JSONArray acts=data.optJSONArray("activities");
-        if(acts!=null){
-            b.append("Занятия: ");
-            for(int i=0;i<Math.min(acts.length(),5);i++)b.append(clipped(acts.optString(i),18)).append(", ");
+        if(acts!=null)for(int i=0;i<Math.min(acts.length(),22);i++){
+            String act=acts.optString(i);
+            if("beach".equals(act)||"snorkel".equals(act)||"diving".equals(act)||"boat".equals(act)||"surf".equals(act))f[5]=1f;
+            if("hiking".equals(act)||"camping".equals(act)||"parkour".equals(act))f[6]=1f;
+            if("ski".equals(act)||"snowboard".equals(act))f[7]=1f;
+            if("photo".equals(act)||"video".equals(act))f[8]=1f;
         }
-        b.append("\nВАРИАНТЫ:\n");
-        for(int i=0;i<choices.size();i++)b.append(i+1).append(". ").append(choices.get(i).optString("name")).append("\n");
-        b.append("Три номера: <end_of_turn>\n<start_of_turn>model\n");
-        return b.toString();
+        JSONObject p=data.optJSONObject("profile");
+        if(p==null)p=new JSONObject();
+        String date=p.optString("date","");
+        int month=0;
+        if(date.length()>=7)try{month=Integer.parseInt(date.substring(5,7));}catch(NumberFormatException ignored){}
+        String country=normalized(p.optString("country"));
+        boolean coldPlace=country.contains("норвег")||country.contains("финлянд")||country.contains("швец")||
+            country.contains("исланд")||country.contains("швейцар")||country.contains("канад")||country.contains("росси");
+        boolean hotPlace=country.contains("египет")||country.contains("таиланд")||country.contains("оаэ")||
+            country.contains("индонез")||country.contains("мальдив")||country.contains("турци");
+        f[9]=(f[7]>0||(coldPlace&&(month==12||month==1||month==2)))?1f:0f;
+        f[10]=(f[5]>0&&hotPlace)?1f:0f;
+        f[11]=Math.min(1f,Math.max(1,p.optInt("days",7))/30f);
+        f[12]=Math.min(1f,Math.max(1,p.optInt("people",1))/8f);
+        f[13]="cabin".equals(p.optString("luggage"))?1f:0f;
+        f[14]="documents".equals(item.optString("category"))?0.85f:
+              "hygiene".equals(item.optString("category"))?0.68f:
+              "tech".equals(item.optString("category"))?0.64f:0.56f;
+        if(name.contains("гермомеш")||name.contains("пластыри"))f[14]=0.88f;
+        f[15]=p.optInt("laundry",0)>0?1f:0f;
+        f[16]=(name.contains("мокрых")||name.contains("гермомеш")||name.contains("пакеты"))?1f:0f;
+        f[17]=("tech".equals(item.optString("category"))||name.contains("телефон"))?1f:0f;
+        return f;
     }
-    private JSONObject selectedRecommendations(String generated, java.util.List<JSONObject> choices) throws Exception {
-        if(generated==null || generated.startsWith("ERROR:"))generated="";
-        JSONArray items=new JSONArray();
-        java.util.HashSet<Integer> seen=new java.util.HashSet<>();
-        String clean=generated.trim();
-        boolean obeyedFormat=clean.matches("[1-9]\\s*[,;]\\s*[1-9]\\s*[,;]\\s*[1-9]");
-        java.util.regex.Matcher m=java.util.regex.Pattern.compile("[1-9]").matcher(obeyedFormat?clean:"");
-        int aiSelections=0;
-        while(m.find() && items.length()<3){
-            int n=Integer.parseInt(m.group())-1;
-            if(n<0||n>=choices.size()||!seen.add(n))continue;
-            JSONObject c=choices.get(n);
-            items.put(new JSONObject()
-                .put("name",c.getString("name")).put("qty",1)
-                .put("category",c.getString("category"))
-                .put("reason","Выбрано Gemma · "+c.getString("reason")));
-            aiSelections++;
+
+    // Never runs on the main/UI thread. Google LiteRT CPU interpreter is
+    // initialized once; buffers are reused for all candidates.
+    private JSONObject neuralRecommendations(JSONObject data,java.util.List<JSONObject> choices) throws Exception {
+        if(!modelReady||rankerModel==null||rankerInput==null||rankerOutput==null)throw new IllegalStateException("Google LiteRT not ready");
+        java.util.ArrayList<Integer> indices=new java.util.ArrayList<>();
+        java.util.HashMap<Integer,Float> scores=new java.util.HashMap<>();
+        for(int i=0;i<choices.size();i++){
+            float[] input=features(data,choices.get(i));
+            rankerInput.get(0).writeFloat(input);
+            rankerModel.run(rankerInput,rankerOutput);
+            float score=rankerOutput.get(0).readFloat()[0];
+            if(!Float.isFinite(score))throw new IOException("Nonfinite neural score");
+            scores.put(i,score);
+            indices.add(i);
         }
-        // Explicitly identified rule-based fallback when the small LLM ignores number format.
-        for(int n=0;n<choices.size()&&items.length()<3;n++){
-            if(!seen.add(n))continue;
-            JSONObject c=choices.get(n);
+        indices.sort((x,y)->Float.compare(scores.get(y),scores.get(x)));
+        JSONArray items=new JSONArray();
+        for(int i=0;i<Math.min(3,indices.size());i++){
+            int idx=indices.get(i);
+            JSONObject c=choices.get(idx);
             items.put(new JSONObject()
-                .put("name",c.getString("name")).put("qty",1)
-                .put("category",c.getString("category"))
-                .put("reason","Подобрано правилами · "+c.getString("reason")));
+               .put("name",c.optString("name")).put("qty",1)
+               .put("category",c.optString("category"))
+               .put("reason","Подбор Google LiteRT RankNet · "+c.optString("reason")));
         }
         return new JSONObject().put("items",items)
-            .put("model","WAYPACK Fast Engine")
-            .put("realModel",aiSelections>0)
-            .put("selectedByAI",aiSelections);
+          .put("model","Google LiteRT · WAYPACK RankNet")
+          .put("realModel",true).put("selectedByAI",items.length())
+          .put("modelKind","task-specific-18d-ranker");
+    }
+
+    private JSONObject selectedRecommendations(String ignored, java.util.List<JSONObject> choices) throws Exception {
+        JSONArray items=new JSONArray();
+        for(int i=0;i<Math.min(3,choices.size());i++){
+            JSONObject c=choices.get(i);
+            items.put(new JSONObject().put("name",c.optString("name"))
+              .put("qty",1).put("category",c.optString("category"))
+              .put("reason","Быстрый подбор · "+c.optString("reason")));
+        }
+        return new JSONObject().put("items",items)
+          .put("model","WAYPACK Fast Engine").put("realModel",false).put("selectedByAI",0);
     }
 
     public final class NativeBridge {
@@ -250,59 +284,50 @@ public final class MainActivity extends Activity {
                 }catch(Exception ignored){}
             });
         }
-        // The reliable recommendation engine is always ready, even if the
-        // optional language model is extracting, loading or failed.
         @JavascriptInterface public boolean isModelReady(){return true;}
-        @JavascriptInterface public boolean isNeuralReady(){return modelReady&&modelFile!=null;}
+        @JavascriptInterface public boolean isNeuralReady(){return modelReady;}
 
-        @JavascriptInterface public void runModel(String id,String payload) {
+        @JavascriptInterface public void runModel(String id,String payload){
             if(id==null||id.length()>80)return;
             if(payload==null||payload.length()>16000){
-                deliver(id,400,"{\"error\":\"Неверный запрос\"}");
-                return;
+                deliver(id,400,"{\"error\":\"Некорректный запрос\"}");return;
             }
             final int serial=requestSerial.incrementAndGet();
-            try {
+            try{
                 JSONObject data=new JSONObject(payload);
                 if(data.optJSONObject("profile")==null||data.optJSONArray("activities")==null)
-                    throw new IOException("Некорректные данные поездки");
+                    throw new IOException("Недостаточно данных поездки");
                 java.util.ArrayList<JSONObject> pool=vettedCandidates(data);
                 if(pool.size()>9)pool=new java.util.ArrayList<>(pool.subList(0,9));
                 final java.util.ArrayList<JSONObject> choices=pool;
-
-                // Respond IMMEDIATELY: this does not depend on model loading,
-                // inference speed, network, worker queue, or phone CPU class.
                 JSONObject instant=selectedRecommendations("",choices);
                 instant.put("model","WAYPACK Fast Engine");
-                instant.put("neuralPending",modelReady && modelFile!=null && !choices.isEmpty());
+                instant.put("neuralPending",modelReady&&!choices.isEmpty());
+                // Return BEFORE any LiteRT inference, so slow devices never hang.
                 deliver(id,200,instant.toString());
 
-                // Optional language-model enrichment runs AFTER the response.
-                // A stalled model can never cause an application-level timeout.
-                if(modelReady&&modelFile!=null&&!choices.isEmpty()){
-                    final String modelPath=modelFile.getAbsolutePath();
-                    worker.execute(() -> {
-                        if(serial!=requestSerial.get())return;
+                if(!choices.isEmpty()){
+                    worker.execute(()->{
+                        if(serial!=requestSerial.get()||!modelReady)return;
                         try{
-                            String generated=inferLocal(modelPath,makePrompt(data,choices));
-                            JSONObject enriched=selectedRecommendations(generated,choices);
-                            if(serial!=requestSerial.get()||enriched.optInt("selectedByAI",0)!=3)return;
+                            JSONObject enriched=neuralRecommendations(data,choices);
+                            if(serial!=requestSerial.get())return;
                             final String json=enriched.toString();
-                            runOnUiThread(() -> {
+                            runOnUiThread(()->{
                                 if(serial==requestSerial.get()&&view!=null&&!isFinishing()&&!isDestroyed()){
-                                    String js="window.waypackNativeEnhance&&window.waypackNativeEnhance("+
-                                        JSONObject.quote(id)+","+JSONObject.quote(json)+")";
-                                    view.evaluateJavascript(js,null);
+                                    view.evaluateJavascript(
+                                        "window.waypackNativeEnhance&&window.waypackNativeEnhance("+
+                                        JSONObject.quote(id)+","+JSONObject.quote(json)+")",null);
                                 }
                             });
                         }catch(Throwable err){
-                            android.util.Log.w("WAYPACK","Optional on-device AI skipped",err);
+                            android.util.Log.w("WAYPACK","Optional LiteRT ranking failed",err);
                         }
                     });
                 }
             }catch(Throwable err){
-                String msg=err.getMessage()==null?"Ошибка данных поездки":err.getMessage();
-                deliver(id,400,"{\"error\":"+JSONObject.quote(msg.substring(0,Math.min(msg.length(),120)))+"}");
+                String message=err.getMessage()==null?"Некорректные данные":err.getMessage();
+                deliver(id,400,"{\"error\":"+JSONObject.quote(message.substring(0,Math.min(message.length(),120)))+"}");
             }
         }
         @JavascriptInterface public void shareText(String raw) {
@@ -346,7 +371,16 @@ public final class MainActivity extends Activity {
         });
     }
     @Override protected void onDestroy(){
+        requestSerial.incrementAndGet();
         if(view!=null){view.removeJavascriptInterface("WaypackNative");view.destroy();view=null;}
+        worker.execute(() -> {
+            try {
+                if(rankerInput!=null)for(TensorBuffer b:rankerInput)b.close();
+                if(rankerOutput!=null)for(TensorBuffer b:rankerOutput)b.close();
+                if(rankerModel!=null)rankerModel.close();
+            }catch(Exception ignored){}
+        });
+        worker.shutdown();
         super.onDestroy();
     }
 }
