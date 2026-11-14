@@ -65,18 +65,29 @@ jobs:
           curl --fail --location --retry 3 --output android/app/src/main/assets/GEMMA_TERMS_OF_USE.txt "https://raw.githubusercontent.com/google-gemma/docs/main/docs/resources/terms.md"
           test "$(wc -c < android/app/src/main/assets/GEMMA_TERMS_OF_USE.txt)" -gt 5000
           git -C android/app/src/main/cpp/llama.cpp rev-parse HEAD
-      - name: Smoke-test real Gemma inference on CPU
+      - name: Direct CPU inference test via llama.cpp C API
         run: |
           set -euxo pipefail
-          cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-host -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF -DLLAMA_BUILD_UI=OFF
-          cmake --build /tmp/waypack-host --target llama-app --parallel 3
-          PROMPT=$'<start_of_turn>user\nНазови три небольшие полезные вещи для поездки к морю, кроме паспорта и футболки. Ответь по-русски, только маркированными строками, без комментариев.\n<end_of_turn>\n<start_of_turn>model\n'
-          timeout 75s /tmp/waypack-host/bin/llama cli -m android/app/src/main/assets/model.gguf \
-            -p "$PROMPT" -n 80 -c 768 -t 2 --temp 0 --no-conversation --no-display-prompt \
-            --no-show-timings --no-warmup > /tmp/waypack-gemma-output.txt 2>&1
-          tail -n 30 /tmp/waypack-gemma-output.txt
+          cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-host \
+            -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF \
+            -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_COMMON=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF
+          cmake --build /tmp/waypack-host --target llama --parallel 3
+          g++ -std=c++17 -O2 \
+            -I android/app/src/main/cpp/llama.cpp/include \
+            -I android/app/src/main/cpp/llama.cpp/ggml/include \
+            android/tests/gemma_smoke.cpp \
+            -L /tmp/waypack-host/bin -Wl,-rpath,/tmp/waypack-host/bin \
+            -lllama -lggml -o /tmp/waypack-smoke
+          LD_LIBRARY_PATH="/tmp/waypack-host/bin" \
+            timeout 50s /tmp/waypack-smoke android/app/src/main/assets/model.gguf \
+            > /tmp/waypack-gemma-output.txt 2>&1 || {
+            tail -n 70 /tmp/waypack-gemma-output.txt
+            exit 1
+          }
+          tail -n 65 /tmp/waypack-gemma-output.txt
+          grep -q "MODEL_RESPONSE_BEGIN" /tmp/waypack-gemma-output.txt
           grep -Eq '[А-Яа-яЁё]{3,}' /tmp/waypack-gemma-output.txt
-          test "$(wc -c < /tmp/waypack-gemma-output.txt)" -gt 12
       - name: Compile native application
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
       - name: Verify APK integrity and package ID
