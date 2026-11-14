@@ -1,15 +1,15 @@
-name: WAYPACK AI Qwen Offline 2.1
+name: WAYPACK AI Gemma Fast 3.0
 on:
   push:
-    branches: [waypack-qwen-2]
+    branches: [waypack-gemma-fast-3]
     paths:
       - 'android/**'
-      - '.github/workflows/waypack-qwen-2.yml'
+      - '.github/workflows/waypack-gemma-fast-3.yml'
   pull_request:
     branches: [main]
     paths:
       - 'android/**'
-      - '.github/workflows/waypack-qwen-2.yml'
+      - '.github/workflows/waypack-gemma-fast-3.yml'
   workflow_dispatch:
 permissions:
   contents: write
@@ -31,9 +31,9 @@ jobs:
           const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
           if(scripts.length<1) throw Error('Missing offline engine or UI script');
           scripts.forEach((script,i)=>new vm.Script(script[1],{filename:'inline-'+i+'.js'}));
-          for (const tag of ['PackingEngine','localStorage','WAYPACK','if(isNative)apiBase=','waypackNativeResolve','runQwen','Content-Security-Policy'])
+          for (const tag of ['PackingEngine','localStorage','WAYPACK','if(isNative)apiBase=','waypackNativeResolve','runModel','Content-Security-Policy'])
             if(!html.includes(tag)) throw Error('Missing required feature: '+tag);
-          console.log('OK: '+scripts.length+' JS blocks parsed; native offline and Qwen backend preset present');
+          console.log('OK: '+scripts.length+' JS blocks parsed; native offline and Gemma on-device bridge present');
           NODE
       - uses: actions/setup-java@v4
         with:
@@ -53,16 +53,30 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
-      - name: Retrieve verified Qwen3 0.6B Q4 weights and llama.cpp native engine
+      - name: Retrieve verified Gemma 3 270M Q4 weights and llama.cpp native engine
         run: |
           set -euxo pipefail
           git clone --depth 1 https://github.com/ggml-org/llama.cpp.git android/app/src/main/cpp/llama.cpp
-          curl --fail --location --retry 4 --retry-delay 4 --progress-bar --output android/app/src/main/assets/qwen.gguf "https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen_Qwen3-0.6B-Q4_K_M.gguf?download=true"
-          MODEL=android/app/src/main/assets/qwen.gguf
-          test "$(stat -c %s "$MODEL")" -gt 400000000
+          curl --fail --location --retry 4 --retry-delay 4 --output android/app/src/main/assets/model.gguf "https://huggingface.co/unsloth/gemma-3-270m-it-GGUF/resolve/41f492445cabbf71afac8c7b392aa2adb23ccc36/gemma-3-270m-it-Q4_K_M.gguf?download=true"
+          MODEL=android/app/src/main/assets/model.gguf
+          test "$(stat -c %s "$MODEL")" -gt 240000000
           test "$(head -c 4 "$MODEL")" = "GGUF"
-          sha256sum "$MODEL" | tee /tmp/waypack-qwen-model-sha.txt
+          echo "b1baabd6b729e4041822220d3e648e00d99cac5df86b10dffb77bcccf0688e39  $MODEL" | sha256sum --check
+          curl --fail --location --retry 3 --output android/app/src/main/assets/GEMMA_TERMS_OF_USE.txt "https://raw.githubusercontent.com/google-gemma/docs/main/docs/resources/terms.md"
+          test "$(wc -c < android/app/src/main/assets/GEMMA_TERMS_OF_USE.txt)" -gt 5000
           git -C android/app/src/main/cpp/llama.cpp rev-parse HEAD
+      - name: Smoke-test real Gemma inference on CPU
+        run: |
+          set -euxo pipefail
+          cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-host -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF
+          cmake --build /tmp/waypack-host --target llama-cli --parallel 3
+          PROMPT=$'<start_of_turn>user\nНазови три небольшие полезные вещи для поездки к морю, кроме паспорта и футболки. Ответь по-русски, только маркированными строками, без комментариев.\n<end_of_turn>\n<start_of_turn>model\n'
+          timeout 75s /tmp/waypack-host/bin/llama-cli -m android/app/src/main/assets/model.gguf \
+            -p "$PROMPT" -n 80 -c 768 -t 2 --temp 0 --no-conversation --no-display-prompt \
+            --no-show-timings --no-warmup > /tmp/waypack-gemma-output.txt 2>&1
+          tail -n 30 /tmp/waypack-gemma-output.txt
+          grep -Eq '[А-Яа-яЁё]{3,}' /tmp/waypack-gemma-output.txt
+          test "$(wc -c < /tmp/waypack-gemma-output.txt)" -gt 12
       - name: Compile native application
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
       - name: Verify APK integrity and package ID
@@ -71,14 +85,15 @@ jobs:
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           unzip -t "$APK" | tail -1
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.localqwen.'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.gemma.'
           mkdir -p release
-          cp "$APK" release/WAYPACK-AI-QWEN-2.1.0.apk
-          sha256sum release/WAYPACK-AI-QWEN-2.1.0.apk > release/SHA256SUMS.txt
+          cp "$APK" release/WAYPACK-AI-GEMMA-3.0.0.apk
+          cp android/app/src/main/assets/GEMMA_NOTICE.txt release/GEMMA_NOTICE.txt
+          sha256sum release/WAYPACK-AI-GEMMA-3.0.0.apk > release/SHA256SUMS.txt
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WAYPACK-AI-QWEN-2.1.0-Android-APK
+          name: WAYPACK-AI-GEMMA-3.0.0-Android-APK
           path: release/*
           retention-days: 30
           if-no-files-found: error
@@ -87,9 +102,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG=waypack-ai-offline-qwen-v2.1.0
+          TAG=waypack-ai-gemma-fast-v3.0.0
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/WAYPACK-AI-QWEN-2.1.0.apk release/SHA256SUMS.txt --clobber
+            gh release upload "$TAG" release/WAYPACK-AI-GEMMA-3.0.0.apk release/SHA256SUMS.txt release/GEMMA_NOTICE.txt --clobber
           else
-            gh release create "$TAG" release/WAYPACK-AI-QWEN-2.1.0.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "WAYPACK AI Android 1.4.0" --notes "One-tap install. On-device Qwen3 0.6B Q4 GGUF + llama.cpp. AI operates fully offline without keys, servers, or logins; initialization copies bundled model to private storage on first launch. ARM64 devices only. Debug signed beta; physical-device benchmark pending."
+            gh release create "$TAG" release/WAYPACK-AI-GEMMA-3.0.0.apk release/SHA256SUMS.txt release/GEMMA_NOTICE.txt --target "$GITHUB_SHA" --title "WAYPACK AI Gemma Fast 3.0.0" --notes "Gemma 3 270M Q4 model included in APK with llama.cpp. Short 13-second inference timeout. Offline, no API keys. Model subject to Google Gemma Terms of Use: https://ai.google.dev/gemma/terms. ARM64 only. Debug-signed beta; actual Android device performance not yet verified."
           fi
