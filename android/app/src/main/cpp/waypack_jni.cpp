@@ -57,6 +57,12 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     if(!ctx)return result(env,"ERROR:context init failed");
     llama_sampler_chain_params sp=llama_sampler_chain_default_params();
     llama_sampler * sampler=llama_sampler_chain_init(sp);
+    // Restrict output to exactly three candidate IDs rather than unconstrained prose.
+    // This avoids long answers, repeated checklists and JSON formatting failures.
+    static const char * grammar = "root ::= [1-9] \\",\\" [1-9] \\",\\" [1-9]";
+    llama_sampler * constrained = llama_sampler_init_grammar(vocab,grammar,"root");
+    if (!constrained) { llama_sampler_free(sampler); llama_free(ctx); return result(env,"ERROR:invalid output grammar"); }
+    llama_sampler_chain_add(sampler,constrained);
     llama_sampler_chain_add(sampler,llama_sampler_init_greedy());
     llama_batch batch=llama_batch_get_one(tok.data(),actual);
     llama_token nextToken = 0;
@@ -64,24 +70,23 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     llama_token id=0;
     const auto started = std::chrono::steady_clock::now();
     bool timedOut=false;
-    int newlines=0;
-    for(int i=0;i<105;i++){
+    for(int i=0;i<18;i++){
         if(std::chrono::steady_clock::now()-started > std::chrono::seconds(13)) {timedOut=true;break;}
         if(llama_decode(ctx,batch)!=0){text="ERROR:decode failed";break;}
         id=llama_sampler_sample(sampler,ctx,-1);
         if(llama_vocab_is_eog(vocab,id))break;
         char piece[1024];int len=llama_token_to_piece(vocab,id,piece,sizeof(piece),0,true);
-        if(len>0){
+        if(len>0) {
             text.append(piece,static_cast<size_t>(len));
-            for(int k=0;k<len;k++) if(piece[k]=='\n') newlines++;
-            if(newlines>=3 && text.find("- ")!=std::string::npos)break;
+            // The grammar permits precisely 1,2,3 (five ASCII bytes).
+            if(text.size()>=5) break;
         }
         nextToken=id;
         batch=llama_batch_get_one(&nextToken,1);
     }
     llama_sampler_free(sampler);
     llama_free(ctx);
-    if(text.size()>5000)text.resize(5000);
+    if(text.size()>32)text.resize(32);
     if(text.empty() && timedOut)text="ERROR:timeout";
     logMsg("Inference completed, output bytes="+std::to_string(text.size()));
     return result(env,text);
