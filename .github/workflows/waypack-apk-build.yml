@@ -44,8 +44,15 @@ jobs:
           gradle-version: '8.9'
       - name: Install required Android SDK packages
         run: |
-          sdkmanager --list_installed
-          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER=""
+          for bin in "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager; do
+            if test -x "$bin"; then SDKMANAGER="$bin"; break; fi
+          done
+          test -x "$SDKMANAGER" || { echo "Android SDK command-line tools missing"; exit 1; }
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0'
       - name: Compile native application
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
       - name: Verify APK integrity and package ID
