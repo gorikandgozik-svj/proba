@@ -1,0 +1,59 @@
+name: CINEMA FORGE Windows EXE
+on:
+  push:
+    branches:
+      - cinema-forge
+    paths:
+      - 'cinema-forge/**'
+      - '.github/workflows/build-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: cinema-forge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: cinema-forge/requirements-build.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Unit tests
+        run: python -m pytest -q tests
+      - name: Package Windows executable
+        run: >-
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name CINEMA_FORGE
+          --collect-binaries imageio_ffmpeg
+          --collect-data imageio_ffmpeg
+          --collect-data edge_tts
+          launch.py
+      - name: Verify file and hash
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'dist/CINEMA_FORGE.exe')) { throw 'EXE missing' }
+          Get-FileHash 'dist/CINEMA_FORGE.exe' -Algorithm SHA256
+          if ((Get-Item 'dist/CINEMA_FORGE.exe').Length -lt 5000000) { throw 'Unexpectedly small EXE' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CINEMA_FORGE-windows
+          path: cinema-forge/dist/CINEMA_FORGE.exe
+          if-no-files-found: error
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/cinema-forge'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cinema-forge-v0.1.0
+          name: CINEMA FORGE v0.1.0 (Windows)
+          target_commitish: cinema-forge
+          prerelease: true
+          files: cinema-forge/dist/CINEMA_FORGE.exe
+          body: |
+            Windows desktop application. Cloud video generation requires your own paid Runway API key.
+            Preview mode is motion graphics, not AI video. Check the README and platform requirements.
