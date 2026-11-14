@@ -28,11 +28,11 @@ static bool is_complete_json(const std::string &s) {
     bool quoted=false, escaped=false, started=false;
     int braces=0, brackets=0;
     for (char c : s) {
-        if (!started) { if (c==' '||c=='\\n'||c=='\\r'||c=='\\t') continue;
+        if (!started) { if (c==' '||c=='\n'||c=='\r'||c=='\t') continue;
             if(c!='{')return false; started=true; }
         if (quoted) {
             if (escaped) escaped=false;
-            else if (c=='\\\\') escaped=true;
+            else if (c=='\\') escaped=true;
             else if (c=='"') quoted=false;
             continue;
         }
