@@ -10,7 +10,7 @@ import org.json.*;
 public final class CloudAI {
   private CloudAI() {}
   private static final String ENDPOINT="https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions";
-  private static final String QWEN="qwen@latest?input_cost<0.5", BACKUP="Meta-Llama-3_3-70B-Instruct";
+  private static final String QWEN="Qwen2.5-VL-72B-Instruct", BACKUP="Mistral-Small-3.2-24B-Instruct-2506";
   private static final String[] GROUPS={"documents","clothes","shoes","hygiene","tech","activity","other"};
   private static final String SYSTEM="Ты WAYPACK AI, помощник по сборам в путешествия. Получишь JSON с "
     +"страной, городом, датой, количеством дней, участников, типом багажа, стиркой, активностями "
@@ -115,7 +115,7 @@ public final class CloudAI {
       .put("activities",activities).put("currentItems",items);
     try{return call(QWEN,safe);}
     catch(Exception e){
-      android.util.Log.w("WAYPACK","Qwen unavailable; trying cloud Llama: "+e.getClass().getSimpleName());
+      android.util.Log.w("WAYPACK","Qwen unavailable; trying cloud Mistral: "+e.getClass().getSimpleName());
       return call(BACKUP,safe);
     }
   }
