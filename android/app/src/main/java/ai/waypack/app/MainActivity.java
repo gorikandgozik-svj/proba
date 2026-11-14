@@ -29,6 +29,7 @@ public final class MainActivity extends Activity {
     private static final String APP_HOST = "appassets.androidplatform.net";
     private static final String APP_URL = "https://" + APP_HOST + "/index.html";
     private static final int SAVE_TEXT = 420;
+    private static final String MODEL_SHA256 = "08b4c8b88efb38ea0b59aa0dd4c8259ada515fd66448136df737a273b7da2d47";
     private static final ExecutorService worker = Executors.newSingleThreadExecutor();
     private static boolean libraryAvailable;
     static {
@@ -47,7 +48,7 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(21,32,61));
         getWindow().setNavigationBarColor(Color.rgb(21,32,61));
         TextView splash = new TextView(this);
-        splash.setText("✦ WAYPACK AI\n\nПодготавливаем быструю Gemma 3...\n\nЭто требуется только при первом запуске.");
+        splash.setText("✦ WAYPACK AI\n\nПроверяем лёгкую Gemma 3...\n\nЭто требуется только при первом запуске.");
         splash.setTextColor(Color.rgb(25,34,61));
         splash.setBackgroundColor(Color.rgb(246,247,251));
         splash.setGravity(Gravity.CENTER);
@@ -69,22 +70,35 @@ public final class MainActivity extends Activity {
     }
 
     private File prepareModel() throws IOException {
-        File target = new File(getFilesDir(),"gemma3-270m-q4.gguf");
+        File target=new File(getFilesDir(),"gemma3-270m-iq2m.gguf");
         long expected;
-        try (AssetFileDescriptor fd = getAssets().openFd("model.gguf")) { expected = fd.getLength(); }
-        if (expected < 100_000_000L) throw new IOException("Model weight file missing or truncated");
-        if (target.isFile() && target.length()==expected) return target;
-        File partial = new File(getFilesDir(),"gemma3-270m-q4.partial");
-        try (InputStream in=new BufferedInputStream(getAssets().open("model.gguf",android.content.res.AssetManager.ACCESS_STREAMING),1024*1024);
-             OutputStream out=new BufferedOutputStream(new FileOutputStream(partial),1024*1024)) {
+        try(AssetFileDescriptor fd=getAssets().openFd("model.gguf")) {expected=fd.getLength();}
+        if(expected<170_000_000L || expected>210_000_000L)throw new IOException("Incorrect bundled model size");
+        android.content.SharedPreferences preferences=getSharedPreferences("waypack_model",MODE_PRIVATE);
+        if(target.isFile()&&target.length()==expected&&MODEL_SHA256.equals(preferences.getString("sha256","")))return target;
+        File partial=new File(getFilesDir(),"gemma3-270m-iq2m.partial");
+        java.security.MessageDigest digest;
+        try{digest=java.security.MessageDigest.getInstance("SHA-256");}
+        catch(java.security.NoSuchAlgorithmException e){throw new IOException("SHA-256 unavailable",e);}
+        try(InputStream in=new BufferedInputStream(getAssets().open("model.gguf",android.content.res.AssetManager.ACCESS_STREAMING),1024*1024);
+            OutputStream out=new BufferedOutputStream(new FileOutputStream(partial),1024*1024)){
             byte[] block=new byte[1024*1024];
-            int count;
-            while ((count=in.read(block))!=-1) out.write(block,0,count);
+            int read;
+            while((read=in.read(block))!=-1){
+                out.write(block,0,read);
+                digest.update(block,0,read);
+            }
             out.flush();
+        }catch(IOException e){partial.delete();throw e;}
+        StringBuilder checksum=new StringBuilder(64);
+        for(byte v:digest.digest())checksum.append(String.format(java.util.Locale.ROOT,"%02x",v&0xff));
+        if(partial.length()!=expected||!MODEL_SHA256.equals(checksum.toString())){
+            partial.delete();
+            throw new IOException("Model checksum mismatch");
         }
-        if (partial.length()!=expected) {partial.delete();throw new IOException("Model copying incomplete");}
-        if (target.exists() && !target.delete()) throw new IOException("Cannot replace old model");
-        if (!partial.renameTo(target)) throw new IOException("Cannot commit local model");
+        if(target.exists()&&!target.delete())throw new IOException("Cannot replace previous model");
+        if(!partial.renameTo(target))throw new IOException("Cannot commit verified model");
+        preferences.edit().putString("sha256",MODEL_SHA256).apply();
         return target;
     }
 
@@ -106,7 +120,7 @@ public final class MainActivity extends Activity {
         view.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(WebView webView, WebResourceRequest request) {
                 Uri uri = request.getUrl();
-                if(!"https".equals(uri.getScheme()) || !APP_HOST.equals(uri.getHost())) return null;
+                if(!"https".equals(uri.getScheme()) || !APP_HOST.equals(uri.getHost())) return missing();
                 String file=uri.getPath();
                 if (!"/index.html".equals(file) && !"/".equals(file)) return missing();
                 try {
@@ -273,7 +287,8 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public boolean isModelReady() {return modelReady;}
         @JavascriptInterface public void runModel(String id,String payload) {
-            if (id==null || id.length()>80 || payload==null || payload.length()>16000) return;
+            if (id==null || id.length()>80)return;
+            if(payload==null||payload.length()>16000){deliver(id,400,"{\"error\":\"Неверный запрос\"}");return;}
             if (!modelReady || modelFile==null) {
                 deliver(id,503,"{\"error\":\"Модель Gemma не загружена\"}");
                 return;
