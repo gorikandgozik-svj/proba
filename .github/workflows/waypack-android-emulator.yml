@@ -48,14 +48,17 @@ jobs:
             adb shell am start -W -n ai.waypack.cloud/ai.waypack.app.MainActivity
             sleep 7
             echo "===== Android crash / WebView log ====="
-            adb logcat -d -v brief -t 900 | grep -Ei 'AndroidRuntime|ai.waypack|chromium|WebView|FATAL EXCEPTION|Caused by' | tail -180 || true
+            adb logcat -d -v brief -t 900 | grep -Ei 'AndroidRuntime|ai.waypack|chromium|WebView|WAYPACK-JS|WAYPACK-UI|FATAL EXCEPTION|Caused by' | tail -180 || true
             echo "===== Screenshot ====="
             adb exec-out screencap -p > waypack-android-smoke.png
             test -s waypack-android-smoke.png
             echo "===== Process / Activity ====="
             PID="$(adb shell pidof ai.waypack.cloud | tr -d '\r')"
             adb shell dumpsys activity activities | grep -E 'ai.waypack.cloud|mResumedActivity|topResumedActivity' || true
-            test -n "$PID"
+            echo "PID reported by pidof: $PID"
+            adb shell ps -A | grep ai.waypack.cloud || true
+            adb logcat -d -v brief | grep 'WAYPACK-UI' | tail -12 || true
+            adb shell dumpsys activity activities | grep 'topResumedActivity=ActivityRecord.*ai.waypack.cloud'
             if adb logcat -d -s AndroidRuntime:E | grep -E 'FATAL EXCEPTION|Process: ai.waypack.cloud'; then
               echo "Android runtime crash detected"
               exit 1
