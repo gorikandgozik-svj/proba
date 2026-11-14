@@ -1,15 +1,15 @@
-name: WAYPACK AI Qwen Offline 2.0
+name: WAYPACK AI Offline Qwen3.5 2B v2.1
 on:
   push:
-    branches: [waypack-qwen-2]
+    branches: [waypack-qwen35-2b]
     paths:
       - 'android/**'
-      - '.github/workflows/waypack-qwen-2.yml'
+      - '.github/workflows/waypack-qwen35-2b.yml'
   pull_request:
     branches: [main]
     paths:
       - 'android/**'
-      - '.github/workflows/waypack-qwen-2.yml'
+      - '.github/workflows/waypack-qwen35-2b.yml'
   workflow_dispatch:
 permissions:
   contents: write
@@ -33,7 +33,7 @@ jobs:
           scripts.forEach((script,i)=>new vm.Script(script[1],{filename:'inline-'+i+'.js'}));
           for (const tag of ['PackingEngine','localStorage','WAYPACK','if(isNative)apiBase=','waypackNativeResolve','runQwen','Content-Security-Policy'])
             if(!html.includes(tag)) throw Error('Missing required feature: '+tag);
-          console.log('OK: '+scripts.length+' JS blocks parsed; native offline and Qwen backend preset present');
+          console.log('OK: '+scripts.length+' JS blocks parsed; native offline and Qwen3.5 offline inference bridge present');
           NODE
       - uses: actions/setup-java@v4
         with:
@@ -53,15 +53,16 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
-      - name: Retrieve verified Qwen3 0.6B Q4 weights and llama.cpp native engine
+      - name: Retrieve verified Qwen3.5 2B Q5_K_M weights and llama.cpp native engine
         run: |
           set -euxo pipefail
           git clone --depth 1 https://github.com/ggml-org/llama.cpp.git android/app/src/main/cpp/llama.cpp
-          curl --fail --location --retry 4 --retry-delay 4 --progress-bar --output android/app/src/main/assets/qwen.gguf "https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen_Qwen3-0.6B-Q4_K_M.gguf?download=true"
+          curl --fail --location --retry 4 --retry-delay 4 --progress-bar --output android/app/src/main/assets/qwen.gguf "https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q5_K_M.gguf?download=true"
           MODEL=android/app/src/main/assets/qwen.gguf
-          test "$(stat -c %s "$MODEL")" -gt 400000000
+          test "$(stat -c %s "$MODEL")" -gt 1500000000
           test "$(head -c 4 "$MODEL")" = "GGUF"
           sha256sum "$MODEL" | tee /tmp/waypack-qwen-model-sha.txt
+          echo "3f50d5f830873c22d33558f69eb2c34aa59858f37e7a58a982aae88bb38ebe88  $MODEL" | sha256sum --check --status
           git -C android/app/src/main/cpp/llama.cpp rev-parse HEAD
       - name: Compile native application
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
@@ -71,25 +72,29 @@ jobs:
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           unzip -t "$APK" | tail -1
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.localqwen.'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.qwen35.'
+          unzip -Z1 "$APK" | grep -Fx 'assets/qwen.gguf'
+          unzip -Z1 "$APK" | grep -Fx 'lib/arm64-v8a/libwaypack-qwen.so'
+          APK_MODEL_SHA=$(unzip -p "$APK" assets/qwen.gguf | sha256sum | awk '{print $1}')
+          test "$APK_MODEL_SHA" = "3f50d5f830873c22d33558f69eb2c34aa59858f37e7a58a982aae88bb38ebe88"
           mkdir -p release
-          cp "$APK" release/WAYPACK-AI-QWEN-2.0.0.apk
-          sha256sum release/WAYPACK-AI-QWEN-2.0.0.apk > release/SHA256SUMS.txt
+          cp "$APK" release/WAYPACK-QWEN35-2B-2.1.0.apk
+          sha256sum release/WAYPACK-QWEN35-2B-2.1.0.apk > release/SHA256SUMS.txt
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WAYPACK-AI-QWEN-2.0.0-Android-APK
+          name: WAYPACK-QWEN35-2B-2.1.0-Android-APK
           path: release/*
-          retention-days: 30
+          retention-days: 14
           if-no-files-found: error
       - name: Publish public one-click APK download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG=waypack-ai-offline-qwen-v2.0.0
+          TAG=waypack-qwen35-2b-v2.1.0
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/WAYPACK-AI-QWEN-2.0.0.apk release/SHA256SUMS.txt --clobber
+            gh release upload "$TAG" release/WAYPACK-QWEN35-2B-2.1.0.apk release/SHA256SUMS.txt --clobber
           else
-            gh release create "$TAG" release/WAYPACK-AI-QWEN-2.0.0.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "WAYPACK AI Android 1.4.0" --notes "One-tap install. On-device Qwen3 0.6B Q4 GGUF + llama.cpp. AI operates fully offline without keys, servers, or logins; initialization copies bundled model to private storage on first launch. ARM64 devices only. Debug signed beta; physical-device benchmark pending."
+            gh release create "$TAG" release/WAYPACK-QWEN35-2B-2.1.0.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "WAYPACK AI 2.1.0 — Offline Qwen3.5 2B" --notes "One-tap install. Stronger model upgrade. On-device Qwen3.5 2B Q5_K_M GGUF + llama.cpp. AI operates fully offline without keys, servers, or logins; initialization copies bundled model to private storage on first launch. ARM64 devices only. Debug signed beta; physical-device benchmark pending."
           fi
