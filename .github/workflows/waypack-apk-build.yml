@@ -39,6 +39,11 @@ jobs:
           NODE
       - name: Integration test automatic cloud UI and fallback
         run: node --test android-tests/cloud-ui.test.cjs
+      - name: Verify native cloud providers
+        run: |
+          grep -q 'Qwen2.5-VL-72B-Instruct' android/app/src/main/java/ai/waypack/app/CloudAI.java
+          grep -q 'Mistral-Small-3.2-24B-Instruct-2506' android/app/src/main/java/ai/waypack/app/CloudAI.java
+          grep -q 'analyzeTrip' android/app/src/main/java/ai/waypack/app/MainActivity.java
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -85,5 +90,5 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release/WAYPACK-AI-1.5.0.apk release/SHA256SUMS.txt --clobber
           else
-            gh release create "$TAG" release/WAYPACK-AI-1.5.0.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "WAYPACK AI Android 1.4.0" --notes "Standalone Android APK. Offline packing planner works immediately without accounts or keys. Qwen automatically analyzes packing via OVHcloud anonymous HTTPS API, with Llama fallback and offline deterministic list. Free anonymous cloud tier is rate-limited; no credentials required. Debug-signed Android APK; not Play Store release."
+            gh release create "$TAG" release/WAYPACK-AI-1.5.0.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "WAYPACK AI Android 1.4.0" --notes "Standalone Android APK. Offline packing planner works immediately without accounts or keys. Qwen2.5-VL-72B-Instruct automatically analyzes packing via OVHcloud anonymous HTTPS API, with Mistral backup and offline deterministic list. Free anonymous cloud tier is rate-limited; no credentials required. Debug-signed Android APK; not Play Store release."
           fi
