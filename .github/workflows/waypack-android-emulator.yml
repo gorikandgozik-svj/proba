@@ -1,0 +1,66 @@
+name: WAYPACK Android device smoke
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'android-tests/**'
+      - '.github/workflows/waypack-android-emulator.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android-emulator:
+    name: Install, launch and screenshot real Android UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Enable KVM acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Emulator startup smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: |
+            set -euxo pipefail
+            gradle -p android :app:assembleDebug --no-daemon
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell pm clear ai.waypack.app
+            adb logcat -c
+            adb shell am start -W -n ai.waypack.app/.MainActivity
+            sleep 10
+            PID="$(adb shell pidof ai.waypack.app | tr -d '\r')"
+            test -n "$PID"
+            adb shell dumpsys activity activities | grep "ai.waypack.app"
+            adb exec-out screencap -p > waypack-android-smoke.png
+            test -s waypack-android-smoke.png
+            if adb logcat -d -s AndroidRuntime:E | grep -E 'FATAL EXCEPTION|Process: ai.waypack.app'; then
+              echo "Android runtime crash detected"
+              exit 1
+            fi
+            echo "WAYPACK smoke PASS: installed, launched, process alive, screenshot captured"
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WAYPACK-AI-1.5.0-Emulator-Screenshot
+          path: waypack-android-smoke.png
+          if-no-files-found: warn
