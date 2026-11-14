@@ -7,6 +7,45 @@
 .connect-panel input{flex:1;min-width:0;border:1px solid #cbc6ef;border-radius:12px;padding:12px;font:inherit;font-size:14px;background:#fff;color:#282b4b}
 .connect-panel small{font-size:12px;line-height:1.5;color:#696885}
 @media(max-width:540px){.connect-panel .connect-row{flex-direction:column}.connect-panel .btn{width:100%}}
+
+/* WAYPACK 1.5 — soft motion, tactile controls, polished AI state */
+:root{--motion-spring:cubic-bezier(.2,.86,.26,1)}
+.main-area{animation:way-fade .36s var(--motion-spring) both}
+@keyframes way-fade{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+@keyframes way-bob{0%,100%{transform:translateY(0) rotate(-10deg)}50%{transform:translateY(-6px) rotate(-8deg)}}
+@keyframes way-shimmer{to{background-position-x:-250%}}
+@keyframes way-orbit{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.suitcase{animation:way-bob 6.5s ease-in-out infinite;transform-origin:center}
+.btn,.stepper button,.selector-row button,.activity,.preset,.category,.check,.item-controls button,.delete-item,.pack-item{
+ transition:transform .22s var(--motion-spring),border-color .22s ease,box-shadow .22s ease,background-color .22s ease,opacity .22s ease;
+ -webkit-tap-highlight-color:transparent;touch-action:manipulation
+}
+.btn:active,.stepper button:active,.selector-row button:active,.activity:active,.preset:active,.category:active,.item-controls button:active{transform:scale(.965)}
+.check:active{transform:scale(.87)}
+.activity:hover,.preset:hover{box-shadow:0 11px 26px #6055bd15}
+.pack-item.is-checked{background:#f8f7ff}
+.pack-item.is-checked .check{animation:way-check .32s var(--motion-spring)}
+@keyframes way-check{0%{transform:scale(.7)}70%{transform:scale(1.18)}100%{transform:scale(1)}}
+.ai-smart{position:relative;overflow:hidden;justify-content:flex-start;margin-bottom:22px;min-height:97px;
+ background:linear-gradient(115deg,#f9f8ff,#f0edff 58%,#f9f8ff);
+ box-shadow:0 8px 24px rgba(108,88,197,.06)}
+.ai-smart.ai-working{border-color:#c9c2ff}
+.ai-smart.ai-done{border-color:#c8e9d6;background:linear-gradient(110deg,#f6fffa,#f5f2ff)}
+.ai-smart .ai-orb{display:grid;place-items:center;min-width:44px;width:44px;height:44px;
+ border-radius:16px;color:white;font-size:25px;background:linear-gradient(130deg,#7a70f0,#b79cfa);
+ box-shadow:0 8px 20px #6d65ce35}
+.ai-smart.ai-working .ai-orb{animation:way-orbit 2.6s linear infinite}
+.ai-smart.ai-done .ai-orb{background:linear-gradient(125deg,#4bba92,#6a6be5)}
+.ai-smart .ai-copy{min-width:0;flex:1}
+.ai-smart h3{font-size:13px;line-height:1.6}
+.ai-smart p{font-size:11px;line-height:1.65}
+.ai-smart .ai-badge{display:inline-flex;vertical-align:middle;margin-left:5px}
+.ai-track{height:5px;margin-top:12px;border-radius:20px;overflow:hidden;background:#dedaf6}
+.ai-track>div{width:45%;height:100%;border-radius:20px;background:linear-gradient(90deg,#766ae9,#bcaeff,#766ae9);background-size:300% 100%;animation:way-shimmer 1.4s linear infinite}
+@media(max-width:760px){.ai-smart{flex-direction:row;gap:12px;padding:15px}.ai-smart .ai-orb{min-width:38px;width:38px;height:38px;font-size:22px}}
+@media(prefers-reduced-motion:reduce){.main-area,.suitcase,.ai-smart .ai-orb,.ai-track>div,.pack-item.is-checked .check{animation:none!important}
+*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
 </style><title>WAYPACK — путешествуй налегке</title></head><body><div class="app-shell"><header class="topbar"><div class="brand"><div class="brand-symbol">✦</div><div><strong>waypack<span class="brand-dot">.</span></strong><small>ТВОЙ УМНЫЙ ЧЕМОДАН</small></div></div><nav class="desktop-nav" aria-label="Этапы"><button type="button" data-step="0" class="nav-step">01 <span>Поездка</span></button><span class="nav-connector"></span><button type="button" data-step="1" class="nav-step">02 <span>Занятия</span></button><span class="nav-connector"></span><button type="button" data-step="2" class="nav-step">03 <span>Мой чемодан</span></button></nav><div class="header-right"><span class="live-dot"></span><span class="header-status">Данные на устройстве</span></div></header><main id="app" aria-live="polite"></main><footer class="footer"><span>WAYPACK / Путешествуй легче ✦</span><span>План — не прогноз погоды. Проверяй правила въезда и авиаперевозки.</span></footer></div><div id="toast" role="status" aria-live="polite"></div><script>/* WAYPACK: deterministic, inspectable packing recommendations. */
 (function(root,factory){const lib=factory();if(typeof module==='object'&&module.exports)module.exports=lib;root.PackingEngine=lib;})(typeof globalThis!=='undefined'?globalThis:this,function(){
 'use strict';
@@ -132,7 +171,9 @@ const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g
 function futureISO(){let d=new Date();d.setDate(d.getDate()+7);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
 let initial={version:3,step:0,profile:{country:'Египет',city:'Шарм-эш-Шейх',date:futureISO(),days:7,people:1,laundry:0,luggage:'checked',notes:''},activities:['beach','snorkel','photo','excursion'],items:[],filter:'all',dirty:false};
 let state;try{let saved=JSON.parse(localStorage.getItem('waypack-state-v3')||'null');state=saved&&saved.version===3&&saved.profile&&Array.isArray(saved.activities)&&Array.isArray(saved.items)?{...initial,...saved,step:Math.max(0,Math.min(2,Number(saved.step)||0))}:initial;}catch{state=initial}
-let aiAvailable=false,aiLoading=false,aiModel='',toastTimeout;
+let aiAvailable=true,aiLoading=false,aiModel='Qwen (облачный)',aiStatus='idle',aiError='',toastTimeout;
+let aiCounter=0,activeAI='',aiCacheKey='';
+const aiPending=new Map();
 const NATIVE_HOST='appassets.androidplatform.net';
 const isNative=location.hostname===NATIVE_HOST;
 let apiBase='';
@@ -146,13 +187,13 @@ function normalizeServerURL(input){
 try{apiBase=normalizeServerURL(String(localStorage.getItem('waypack-api-base')||'').trim())||''}catch{}
 if(isNative)apiBase='https://waypack-travel-ai.vercel.app';
 function endpoint(path){return (apiBase||((isNative||location.protocol==='file:')?'':location.origin))+path}
-function needsServerURL(){return !isNative && (location.protocol==='file:'||!aiAvailable||!!apiBase)}
+function needsServerURL(){return false}
 
 function persist(){try{localStorage.setItem('waypack-state-v3',JSON.stringify(state))}catch(e){}}
 function toast(message){let t=$('toast');t.textContent=message;t.classList.add('show');clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>t.classList.remove('show'),3100)}
 function count(){return {total:state.items.length,done:state.items.filter(x=>x.checked).length}}
-function setStep(n){if(n===2&&(state.dirty||!state.items.length)){createList()}state.step=n;persist();render();window.scrollTo({top:0,behavior:'smooth'});}
-function createList(){let result=E.generate(state.profile,state.activities);state.items=E.mergeItems(state.items,result.items);state.dirty=false;state.result={season:result.season.summary,month:result.season.month,mode:'rules',generatedAt:new Date().toISOString()};persist()}
+function setStep(n){let regenerated=false;if(n===2&&(state.dirty||!state.items.length)){createList();regenerated=true}state.step=n;persist();render();if(n===2&&regenerated)startCloudAI();window.scrollTo({top:0,behavior:'smooth'});}
+function createList(){aiCounter++;activeAI='';aiLoading=false;aiStatus='idle';let result=E.generate(state.profile,state.activities);state.items=E.mergeItems(state.items.filter(i=>!String(i.id).startsWith('ai_')),result.items);state.dirty=false;state.result={season:result.season.summary,month:result.season.month,mode:'rules',generatedAt:new Date().toISOString()};persist()}
 function progressBar(){return `<div class="mobile-stage" aria-label="Шаг ${state.step+1} из 3">${[0,1,2].map(i=>`<div class="segment ${i<=state.step?'active':''}"></div>`).join('')}</div>`}
 function visual(){return `<div class="visual" aria-hidden="true"><span class="visual-caption">TRAVEL, BUT SMARTER</span><div class="visual-title">Твой мир.<br><span>Твои правила.</span></div><span class="star">✦</span><span class="visual-tag">✈ ✦ Всё под контролем</span><div class="suitcase"><div class="suitcase-label">✓</div></div><span class="float-symbol one">🕶️</span><span class="float-symbol two">🛫</span></div>`}
 function hero(){return `<section class="hero"><div><div class="eyebrow">ПУТЕШЕСТВИЯ БЕЗ СТРЕССА</div><h1>Мир ждёт.<br><em>Чемодан готов.</em></h1><p>Укажи, куда едешь и чем планируешь заниматься. WAYPACK рассчитает, что взять с собой — вплоть до количества футболок и носков.</p><div class="trust-chips"><span class="tiny-chip">✦ Персональный список</span><span class="tiny-chip">✓ Ничего не забыть</span><span class="tiny-chip">⚡ Работает офлайн</span></div></div>${visual()}</section>`}
@@ -160,21 +201,113 @@ function profile(){let p=state.profile,s=E.season(p),favorite=E.destinations.sli
 function plural(n,arr){let a=Math.abs(n)%100,b=a%10;return a>10&&a<20?arr[2]:b>1&&b<5?arr[1]:b===1?arr[0]:arr[2]}
 function bottom(title,action){return `<div class="bottombar"><button class="btn primary" data-action="${action}" type="button">${title}</button></div>`}
 function activityPage(){let rec=new Set(E.suggestActivities(state.profile));let sorted=[...A].sort((a,b)=>Number(rec.has(b.id))-Number(rec.has(a.id)));return `<div class="main-area">${progressBar()}<div class="eyebrow">ТВОЙ МАРШРУТ • ТВОИ ИНТЕРЕСЫ</div><div class="activities-intro"><div><h1 style="font-size:clamp(29px,4vw,43px);letter-spacing:-1.8px;margin:13px 0 9px">Чем займёмся в <span style="color:#776cf1">${esc(state.profile.city||'путешествии')}</span>?</h1><p class="step-lead">Выбирай всё, что интересно. Мы добавим подходящую экипировку и одежду.</p></div><div class="activity-counter">${state.activities.length} выбрано</div></div><div class="section-head"><h2 class="step-title">02 / Выбери активности</h2><span class="number-label">ШАГ 2 ИЗ 3</span></div><div class="activities-grid">${sorted.map(a=>`<button class="activity ${state.activities.includes(a.id)?'active':''}" aria-pressed="${state.activities.includes(a.id)}" data-activity="${a.id}"><span class="act-check">✓</span><span class="emoji">${a.icon}</span><strong>${a.label}</strong><small>${a.desc}</small></button>`).join('')}</div><div class="tipbar"><span class="lightbulb">✨</span><p><strong>Мы подобрали варианты под направление.</strong> Можно выбрать любые активности — даже нестандартные для этого города. Вещи добавятся автоматически.</p></div><div class="action-row mobile-hide-cta"><button class="btn secondary" data-action="back-profile">← Назад</button><button class="btn primary" data-action="generate">✦ Собрать мой чемодан →</button></div>${bottom('✦ Собрать мой чемодан →','generate')}</div>`}
-function resultPage(){let p=state.profile,c=count(),pct=c.total?Math.round(100*c.done/c.total):0,items=state.items;let groupsArr=Object.entries(G).filter(([id])=>items.some(i=>i.category===id));let groupCards=groupsArr.filter(([id])=>state.filter==='all'||state.filter===id).map(([id,g])=>{let its=items.filter(i=>i.category===id),done=its.filter(x=>x.checked).length;return `<div class="pack-group"><div class="pack-group-head"><span>${g.icon}</span><strong>${g.name}</strong><span class="counter">${done}/${its.length}</span></div>${its.map(it=>`<div class="pack-item ${it.checked?'is-checked':''}"><button class="check" data-toggle="${esc(it.id)}" aria-pressed="${!!it.checked}" aria-label="${it.checked?'Убрать отметку':'Отметить собранным'}: ${esc(it.name)}">✓</button><div class="item-detail"><strong>${it.important?'<span class="important-dot" title="Важно"></span>':''}${esc(it.name)}</strong>${it.why?`<small>${esc(it.why)}</small>`:''}</div><div class="item-controls"><button aria-label="Уменьшить количество ${esc(it.name)}" data-qty="${esc(it.id)}" data-delta="-1">−</button><span title="${esc(it.unit)}">${it.qty}</span><button aria-label="Увеличить количество ${esc(it.name)}" data-qty="${esc(it.id)}" data-delta="1">+</button></div>${it.id.startsWith('custom_')||it.id.startsWith('ai_')?`<button class="delete-item" title="Удалить" aria-label="Удалить ${esc(it.name)}" data-remove="${esc(it.id)}">×</button>`:''}</div>`).join('')}</div>`}).join('');return `<div class="main-area">${progressBar()}<div class="result-top"><div><div class="eyebrow">ТВОЙ ПЕРСОНАЛЬНЫЙ ПЛАН</div><h1>Чемодан почти собран ✨</h1><p>📍 ${esc(p.city)}, ${esc(p.country)} &nbsp;•&nbsp; ${p.days} ${plural(p.days,['день','дня','дней'])} &nbsp;•&nbsp; ${p.people} ${plural(p.people,['человек','человека','человек'])} &nbsp;•&nbsp; ${state.activities.length} ${plural(state.activities.length,['активность','активности','активностей'])}</p></div><div class="result-tools"><button class="btn secondary small" data-action="back-activities">✎ Изменить план</button><button class="btn quiet small" data-action="export">↓ Список .txt</button><button class="btn quiet small" data-action="share">↗ Поделиться</button></div></div><div class="progress-card"><div class="ring" style="background:conic-gradient(#b8aeff ${pct}%,#535b8c ${pct}% 100%)"><strong>${pct}%</strong></div><div class="progress-info"><h3>${pct===100?'Всё собрано! 🎉':'Ты отлично справляешься!'}</h3><p>${pct===100?'Счастливого путешествия!':'Отмечай вещи галочками по мере сборов.'}</p><div class="progress-mini"><span>✓ ${c.done} собрано</span><span>◷ ${c.total-c.done} осталось</span><span>✦ ${c.total} позиций</span></div></div></div><div class="ai-panel" style="margin-bottom:22px"><div><h3>✦ AI-дополнение <span class="ai-badge">${aiAvailable?'QWEN ПОДКЛЮЧЁН':'ОФЛАЙН-РЕЖИМ'}</span></h3><p>${aiAvailable?`Модель ${esc(aiModel)} может предложить дополнительную экипировку по маршруту. Данные поездки передаются AI-провайдеру при запуске.`:'Основной список уже создан локальным алгоритмом. Для дополнения через Qwen необходим настроенный сервер с API-ключом.'}</p></div><button type="button" class="btn ${aiAvailable?'primary':'secondary'} small" data-action="ai" ${!aiAvailable||aiLoading?'disabled':''}>${aiLoading?'<span class="loading-spin"></span> Анализируем...':'✦ Дополнить с Qwen'}</button></div>${needsServerURL()?`<div class="connect-panel"><label for="api-base">🔐 Адрес сервера Qwen (HTTPS)</label><div class="connect-row"><input id="api-base" type="url" placeholder="https://your-waypack-server.example" maxlength="220" value="${esc(apiBase)}" autocomplete="url" spellcheck="false"><button type="button" class="btn secondary small" data-action="connect-server">${apiBase?'Проверить':'Подключить'}</button></div><small>API-ключ хранится только на сервере. Здесь вводится адрес сервера, а не ключ. Отправка данных происходит только после нажатия на Qwen.</small></div>`:''}<div class="list-layout"><aside class="categories"><button class="category ${state.filter==='all'?'selected':''}" data-filter="all"><span class="icon">✦</span> Всё вместе <span class="count">${items.length}</span></button>${groupsArr.map(([id,g])=>`<button class="category ${state.filter===id?'selected':''}" data-filter="${id}"><span class="icon">${g.icon}</span> ${g.name} <span class="count">${items.filter(i=>i.category===id).length}</span></button>`).join('')}</aside><div class="list-content"><div class="list-header"><strong>${state.filter==='all'?'Полный чек-лист':G[state.filter]?.name||'Чек-лист'}</strong><span>${c.total} ${plural(c.total,['вещь','вещи','вещей'])} в списке</span></div>${groupCards||'<div class="empty">Пока нет вещей в этой категории.</div>'}<form id="add-form" class="add-form"><h3>＋ Добавить свою вещь</h3><div class="add-form-fields"><input class="custom-input" name="name" maxlength="60" placeholder="Например, любимая книга" required aria-label="Название вещи"><input class="custom-input" name="qty" type="number" min="1" max="99" value="1" required aria-label="Количество"><button class="btn primary small" type="submit">Добавить</button></div></form><div class="small-note">💡 ${esc(state.result?.season||'Погода может меняться')}. Сверь прогноз за 1–3 дня до вылета. Для авиаперелёта отдельно проверь нормы багажа, жидкостей и пауэрбанков.</div></div></div>${bottom('↗ Поделиться списком','share')}</div>`}
+
+function aiPanel(){
+  const title=aiLoading?'ИИ анализирует маршрут...':aiStatus==='ready'?'Список улучшен нейросетью':aiStatus==='fallback'?'Список готов — без облака':'Умный список WAYPACK';
+  const descr=aiLoading?'Qwen проверяет количество одежды, занятия и предлагает недостающие вещи. Ты уже можешь собирать чемодан.':
+    aiStatus==='ready'?'Использована настоящая облачная модель '+aiModel+'. При желании меняй количество вещей вручную.':
+    aiStatus==='fallback'?'Нет связи с облачной моделью или исчерпан бесплатный лимит. Твой список работает офлайн, ничего настраивать не нужно.':
+    'При создании списка Qwen автоматически учтёт детали поездки. Без регистрации и API-ключей.';
+  return '<div class="ai-panel ai-smart '+(aiLoading?'ai-working':aiStatus==='ready'?'ai-done':'')+'" role="status" aria-live="polite">'+
+    '<span class="ai-orb" aria-hidden="true">✦</span><div class="ai-copy"><h3>'+title+
+    ' <span class="ai-badge">'+(aiLoading?'АНАЛИЗ':aiStatus==='ready'?'ИИ УЧАСТВОВАЛ':aiStatus==='fallback'?'ОФЛАЙН':'АВТОМАТИЧЕСКИ')+'</span></h3>'+
+    '<p>'+esc(descr)+'</p>'+(aiLoading?'<div class="ai-track"><div></div></div>':'')+
+    '</div></div>';
+}
+
+function resultPage(){let p=state.profile,c=count(),pct=c.total?Math.round(100*c.done/c.total):0,items=state.items;let groupsArr=Object.entries(G).filter(([id])=>items.some(i=>i.category===id));let groupCards=groupsArr.filter(([id])=>state.filter==='all'||state.filter===id).map(([id,g])=>{let its=items.filter(i=>i.category===id),done=its.filter(x=>x.checked).length;return `<div class="pack-group"><div class="pack-group-head"><span>${g.icon}</span><strong>${g.name}</strong><span class="counter">${done}/${its.length}</span></div>${its.map(it=>`<div class="pack-item ${it.checked?'is-checked':''}"><button class="check" data-toggle="${esc(it.id)}" aria-pressed="${!!it.checked}" aria-label="${it.checked?'Убрать отметку':'Отметить собранным'}: ${esc(it.name)}">✓</button><div class="item-detail"><strong>${it.important?'<span class="important-dot" title="Важно"></span>':''}${esc(it.name)}</strong>${it.why?`<small>${esc(it.why)}</small>`:''}</div><div class="item-controls"><button aria-label="Уменьшить количество ${esc(it.name)}" data-qty="${esc(it.id)}" data-delta="-1">−</button><span title="${esc(it.unit)}">${it.qty}</span><button aria-label="Увеличить количество ${esc(it.name)}" data-qty="${esc(it.id)}" data-delta="1">+</button></div>${it.id.startsWith('custom_')||it.id.startsWith('ai_')?`<button class="delete-item" title="Удалить" aria-label="Удалить ${esc(it.name)}" data-remove="${esc(it.id)}">×</button>`:''}</div>`).join('')}</div>`}).join('');return `<div class="main-area">${progressBar()}<div class="result-top"><div><div class="eyebrow">ТВОЙ ПЕРСОНАЛЬНЫЙ ПЛАН</div><h1>Чемодан почти собран ✨</h1><p>📍 ${esc(p.city)}, ${esc(p.country)} &nbsp;•&nbsp; ${p.days} ${plural(p.days,['день','дня','дней'])} &nbsp;•&nbsp; ${p.people} ${plural(p.people,['человек','человека','человек'])} &nbsp;•&nbsp; ${state.activities.length} ${plural(state.activities.length,['активность','активности','активностей'])}</p></div><div class="result-tools"><button class="btn secondary small" data-action="back-activities">✎ Изменить план</button><button class="btn quiet small" data-action="export">↓ Список .txt</button><button class="btn quiet small" data-action="share">↗ Поделиться</button></div></div><div class="progress-card"><div class="ring" style="background:conic-gradient(#b8aeff ${pct}%,#535b8c ${pct}% 100%)"><strong>${pct}%</strong></div><div class="progress-info"><h3>${pct===100?'Всё собрано! 🎉':'Ты отлично справляешься!'}</h3><p>${pct===100?'Счастливого путешествия!':'Отмечай вещи галочками по мере сборов.'}</p><div class="progress-mini"><span>✓ ${c.done} собрано</span><span>◷ ${c.total-c.done} осталось</span><span>✦ ${c.total} позиций</span></div></div></div>${aiPanel()}<div class="list-layout"><aside class="categories"><button class="category ${state.filter==='all'?'selected':''}" data-filter="all"><span class="icon">✦</span> Всё вместе <span class="count">${items.length}</span></button>${groupsArr.map(([id,g])=>`<button class="category ${state.filter===id?'selected':''}" data-filter="${id}"><span class="icon">${g.icon}</span> ${g.name} <span class="count">${items.filter(i=>i.category===id).length}</span></button>`).join('')}</aside><div class="list-content"><div class="list-header"><strong>${state.filter==='all'?'Полный чек-лист':G[state.filter]?.name||'Чек-лист'}</strong><span>${c.total} ${plural(c.total,['вещь','вещи','вещей'])} в списке</span></div>${groupCards||'<div class="empty">Пока нет вещей в этой категории.</div>'}<form id="add-form" class="add-form"><h3>＋ Добавить свою вещь</h3><div class="add-form-fields"><input class="custom-input" name="name" maxlength="60" placeholder="Например, любимая книга" required aria-label="Название вещи"><input class="custom-input" name="qty" type="number" min="1" max="99" value="1" required aria-label="Количество"><button class="btn primary small" type="submit">Добавить</button></div></form><div class="small-note">💡 ${esc(state.result?.season||'Погода может меняться')}. Сверь прогноз за 1–3 дня до вылета. Для авиаперелёта отдельно проверь нормы багажа, жидкостей и пауэрбанков.</div></div></div>${bottom('↗ Поделиться списком','share')}</div>`}
 function render(){document.querySelectorAll('[data-step]').forEach(x=>{let i=Number(x.dataset.step);x.classList.toggle('current',i===state.step);x.classList.toggle('done',i<state.step)});$('app').innerHTML=state.step===0?profile():state.step===1?activityPage():resultPage()}
 function onProfileChange(el){let key=el.dataset.field;if(!key)return;let val=el.value;if(key==='laundry')val=Number(val);state.profile[key]=val;state.dirty=true; if(key==='city'){let d=E.destinations.find(x=>x.city.toLocaleLowerCase('ru-RU')===String(val).toLocaleLowerCase('ru-RU'));if(d)state.profile.country=d.country;}persist()}
 async function exportOrShare(share){let p=state.profile;let lines=[`WAYPACK — ${p.city}, ${p.country} (${p.days} дн.)`,`Активности: ${state.activities.map(id=>A.find(a=>a.id===id)?.label).filter(Boolean).join(', ')}`,''];for(let [k,g] of Object.entries(G)){let its=state.items.filter(i=>i.category===k);if(!its.length)continue;lines.push(g.name.toUpperCase());its.forEach(i=>lines.push(`${i.checked?'[x]':'[ ]'} ${i.name} — ${i.qty} ${i.unit}`));lines.push('')}lines.push('Сформировано в WAYPACK');let text=lines.join('\n');if(window.WaypackNative&&window.WaypackNative.shareText&&share){window.WaypackNative.shareText(text);return}if(window.WaypackNative&&window.WaypackNative.saveText&&!share){window.WaypackNative.saveText(text);return}if(share){if(navigator.share){try{await navigator.share({title:'Мой чемодан — WAYPACK',text});return}catch(err){if(err.name==='AbortError')return}}try{await navigator.clipboard.writeText(text);toast('Список скопирован 📋');return}catch(e){toast('Скопировать не удалось; скачай TXT')}}let blob=new Blob(['\uFEFF'+text],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='waypack-list.txt';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);if(!share)toast('Список сохранён 📥')}
-async function askAI(){if(!aiAvailable||aiLoading)return;aiLoading=true;render();try{let controller=new AbortController(),timer=setTimeout(()=>controller.abort(),28000);let response;try{response=await fetch(endpoint('/api/ai'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:state.profile,activities:state.activities,currentItems:state.items.map(i=>({name:i.name,qty:i.qty}))}),signal:controller.signal})}finally{clearTimeout(timer)}let data=await response.json();if(!response.ok)throw Error(data.error||'Не удалось получить рекомендации');let existingNames=new Set(state.items.map(x=>x.name.toLocaleLowerCase('ru-RU'))),added=0;for(let i of data.items||[]){let name=String(i.name||'').trim().slice(0,60),category=G[i.category]?i.category:'other';if(!name||existingNames.has(name.toLocaleLowerCase('ru-RU')))continue;let id='ai_'+Date.now()+'_'+added;state.items.push({id,name,qty:Math.min(15,Math.max(1,Number(i.qty)||1)),category,why:String(i.reason||'Дополнение от Qwen').slice(0,100),important:false,unit:'шт.',checked:false});existingNames.add(name.toLocaleLowerCase('ru-RU'));added++}persist();toast(added?`Qwen добавил ${added} ${plural(added,['вещь','вещи','вещей'])} ✨`:'Qwen не нашёл новых необходимых вещей')}catch(error){toast(error.name==='AbortError'?'Qwen не ответил вовремя':String(error.message).slice(0,120))}finally{aiLoading=false;render()}}
+
+function tripKey(){return JSON.stringify({profile:state.profile,activities:[...state.activities].sort()})}
+function applyAI(data){
+  if(!data||data.realModel!==true||!Array.isArray(data.additions)||!Array.isArray(data.updates))throw Error('Недостаточный ответ ИИ');
+  const norm=s=>String(s||'').trim().toLocaleLowerCase('ru-RU');
+  const known=new Set(state.items.map(i=>norm(i.name)));
+  let added=0,updated=0;
+  for(const change of data.updates.slice(0,6)){
+    let name=norm(change.name),target=state.items.find(x=>norm(x.name)===name);
+    if(!target||target.checked||target.editedQty||target.important||!['clothes','shoes','activity'].includes(target.category))continue;
+    let qty=Math.round(Number(change.qty));
+    if(!Number.isFinite(qty)||qty<1||qty>30||qty===target.qty)continue;
+    target.qty=qty;target.why=String(change.reason||target.why||'').slice(0,100);updated++;
+  }
+  for(const add of data.additions.slice(0,9)){
+    const name=String(add.name||'').trim().slice(0,60),key=norm(name);
+    if(name.length<2||known.has(key))continue;
+    const qty=Math.round(Number(add.qty));
+    const category=G[add.category]?add.category:'other';
+    state.items.push({id:'ai_'+Date.now()+'_'+added,name,qty:Number.isFinite(qty)?Math.max(1,Math.min(25,qty)):1,
+      category,why:String(add.reason||'Рекомендация облачного ИИ').slice(0,100),
+      important:false,unit:'шт.',checked:false});
+    known.add(key);added++;
+  }
+  aiStatus='ready';aiError='';aiModel=String(data.model||'Qwen').slice(0,80);
+  state.result={...(state.result||{}),mode:'ai',model:aiModel,aiAt:new Date().toISOString()};
+  persist();render();
+  return {added,updated};
+}
+window.waypackCloudDone=(id,status,raw)=>{
+  const task=aiPending.get(id);if(!task)return;
+  aiPending.delete(id);clearTimeout(task.timer);
+  try{
+    const data=JSON.parse(raw);
+    if(status!==200)throw Error(String(data.error||'Облачный ИИ недоступен'));
+    task.resolve(data);
+  }catch(e){task.reject(e)}
+};
+function cloudRequest(id,payload){
+  if(isNative && window.WaypackNative && typeof window.WaypackNative.analyzeTrip==='function'){
+    return new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{aiPending.delete(id);reject(Error('Ответ ИИ слишком долгий'))},52000);
+      aiPending.set(id,{resolve,reject,timer});
+      try{window.WaypackNative.analyzeTrip(id,JSON.stringify(payload))}
+      catch(e){clearTimeout(timer);aiPending.delete(id);reject(e)}
+    });
+  }
+  return (async()=>{
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),42000);
+    try{
+      const response=await fetch('https://waypack-qwen-runtime.vercel.app/api/ai',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});
+      const data=await response.json();
+      if(!response.ok)throw Error(data.error||'Облачный ИИ недоступен');
+      return data;
+    }finally{clearTimeout(timer)}
+  })();
+}
+async function startCloudAI(){
+  if(state.step!==2||aiLoading||!state.items.length)return;
+  const key=tripKey(),id='trip_'+(++aiCounter)+'_'+Date.now();
+  activeAI=id;aiCacheKey=key;
+  try{
+    const cache=JSON.parse(localStorage.getItem('waypack-ai-cache-v1')||'null');
+    if(cache&&cache.key===key&&Date.now()-cache.ts<12*60*60*1000&&cache.data&&cache.data.realModel===true){
+      applyAI(cache.data);return;
+    }
+  }catch(e){}
+  aiLoading=true;aiStatus='loading';render();
+  const payload={profile:{...state.profile},activities:[...state.activities],currentItems:state.items.map(x=>({name:x.name,qty:x.qty}))};
+  try{
+    const data=await cloudRequest(id,payload);
+    if(id!==activeAI||state.step!==2||tripKey()!==key)return;
+    aiLoading=false;
+    const result=applyAI(data);
+    try{localStorage.setItem('waypack-ai-cache-v1',JSON.stringify({key,ts:Date.now(),data}))}catch(e){}
+    toast('✦ ИИ учёл поездку: '+result.updated+' изменений, '+result.added+' дополнений');
+  }catch(error){
+    if(id!==activeAI||state.step!==2)return;
+    aiLoading=false;aiStatus='fallback';aiError=String(error.message||error).slice(0,100);
+    persist();render();
+  }
+}
+
 $('app').addEventListener('submit',e=>{if(e.target.id!=='add-form')return;e.preventDefault();let fd=new FormData(e.target),name=String(fd.get('name')||'').trim();if(!name)return;let qty=Math.min(99,Math.max(1,Number(fd.get('qty'))||1));state.items.push({id:'custom_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),name:name.slice(0,60),qty,category:state.filter==='all'?'other':state.filter,why:'Добавлено вручную',important:false,unit:'шт.',checked:false});persist();render();toast('Добавлено в чемодан ✓')});
 $('app').addEventListener('change',e=>{if(e.target.dataset.field){onProfileChange(e.target);if(e.target.dataset.field==='city'||e.target.dataset.field==='country'||e.target.dataset.field==='date')render()}});
 $('app').addEventListener('input',e=>{if(e.target.dataset.field)onProfileChange(e.target)});
-document.addEventListener('click',e=>{let t=e.target.closest('button');if(!t)return;if(t.dataset.step!==undefined){let n=Number(t.dataset.step);setStep(n);return}let a=t.dataset.action;if(a){if(a==='next-activities'){if(!state.profile.country.trim()||!state.profile.city.trim()){toast('Укажи страну и город');return}setStep(1)}if(a==='back-profile')setStep(0);if(a==='back-activities')setStep(1);if(a==='generate'){createList();state.filter='all';setStep(2)}if(a==='export')exportOrShare(false);if(a==='share')exportOrShare(true);if(a==='ai')askAI();if(a==='connect-server'){
- const input=$('api-base'),url=normalizeServerURL(String(input?.value||'').trim());
- if(url===null){toast('Нужен полный HTTPS-адрес без пути: https://...');return}
- apiBase=url;try{localStorage.setItem('waypack-api-base',apiBase)}catch{}
- aiAvailable=false;aiModel='';checkAI().then(()=>toast(aiAvailable?'Qwen подключён ✓':'Сервер недоступен или ключ Qwen не настроен'));
-}return}if(t.dataset.stepper){let k=t.dataset.stepper;state.profile[k]=Math.max(1,Math.min(k==='days'?60:12,Number(state.profile[k])+Number(t.dataset.amount)));state.dirty=true;persist();render();return}if(t.dataset.luggage){state.profile.luggage=t.dataset.luggage;state.dirty=true;persist();render();return}if(t.dataset.destination){let d=E.destinations.find(x=>x.city===t.dataset.destination);if(d){state.profile.city=d.city;state.profile.country=d.country;state.activities=E.suggestActivities(state.profile).slice(0,4);state.dirty=true;persist();render()}return}if(t.dataset.activity){let id=t.dataset.activity;if(state.activities.includes(id))state.activities=state.activities.filter(x=>x!==id);else state.activities.push(id);state.dirty=true;persist();render();return}if(t.dataset.filter){state.filter=t.dataset.filter;persist();render();return}if(t.dataset.toggle){let i=state.items.find(x=>x.id===t.dataset.toggle);if(i){i.checked=!i.checked;persist();render()}return}if(t.dataset.qty){let i=state.items.find(x=>x.id===t.dataset.qty);if(i){i.qty=Math.max(1,Math.min(999,i.qty+Number(t.dataset.delta)));i.editedQty=true;persist();render()}return}if(t.dataset.remove){state.items=state.items.filter(x=>x.id!==t.dataset.remove);persist();render();toast('Вещь удалена')}});
-async function checkAI(){aiAvailable=false;aiModel='';if(!endpoint('/api/status')||(!apiBase&&needsServerURL())){if(state.step===2)render();return;}try{let r=await fetch(endpoint('/api/status'),{cache:'no-store',signal:AbortSignal.timeout(4000)});if(!r.ok)return;let j=await r.json();aiAvailable=!!j.qwen;aiModel=String(j.model||'Qwen');}catch(e){}finally{if(state.step===2)render()}}
-window.waypackGoBack=()=>{if(state.step>0){setStep(state.step-1);return true}return false};render();checkAI();if(!isNative&&'serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost')){navigator.serviceWorker.register('/sw.js').catch(()=>{})}
+document.addEventListener('click',e=>{let t=e.target.closest('button');if(!t)return;if(window.WaypackNative&&typeof window.WaypackNative.haptic==='function'&&!t.disabled)try{window.WaypackNative.haptic()}catch(err){};if(t.dataset.step!==undefined){let n=Number(t.dataset.step);setStep(n);return}let a=t.dataset.action;if(a){if(a==='next-activities'){if(!state.profile.country.trim()||!state.profile.city.trim()){toast('Укажи страну и город');return}setStep(1)}if(a==='back-profile')setStep(0);if(a==='back-activities')setStep(1);if(a==='generate'){state.filter='all';state.dirty=true;setStep(2)}if(a==='export')exportOrShare(false);if(a==='share')exportOrShare(true);return}if(t.dataset.stepper){let k=t.dataset.stepper;state.profile[k]=Math.max(1,Math.min(k==='days'?60:12,Number(state.profile[k])+Number(t.dataset.amount)));state.dirty=true;persist();render();return}if(t.dataset.luggage){state.profile.luggage=t.dataset.luggage;state.dirty=true;persist();render();return}if(t.dataset.destination){let d=E.destinations.find(x=>x.city===t.dataset.destination);if(d){state.profile.city=d.city;state.profile.country=d.country;state.activities=E.suggestActivities(state.profile).slice(0,4);state.dirty=true;persist();render()}return}if(t.dataset.activity){let id=t.dataset.activity;if(state.activities.includes(id))state.activities=state.activities.filter(x=>x!==id);else state.activities.push(id);state.dirty=true;persist();render();return}if(t.dataset.filter){state.filter=t.dataset.filter;persist();render();return}if(t.dataset.toggle){let i=state.items.find(x=>x.id===t.dataset.toggle);if(i){i.checked=!i.checked;persist();render()}return}if(t.dataset.qty){let i=state.items.find(x=>x.id===t.dataset.qty);if(i){i.qty=Math.max(1,Math.min(999,i.qty+Number(t.dataset.delta)));i.editedQty=true;persist();render()}return}if(t.dataset.remove){state.items=state.items.filter(x=>x.id!==t.dataset.remove);persist();render();toast('Вещь удалена')}});
+window.waypackGoBack=()=>{if(state.step>0){setStep(state.step-1);return true}return false};render();if(state.step===2&&state.result?.mode==='rules')startCloudAI();if(!isNative&&'serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost')){navigator.serviceWorker.register('/sw.js').catch(()=>{})}
 })();
 </script></body></html>
