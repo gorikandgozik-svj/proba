@@ -46,7 +46,7 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(21,32,61));
         getWindow().setNavigationBarColor(Color.rgb(21,32,61));
         TextView splash = new TextView(this);
-        splash.setText("✦ WAYPACK AI\n\nПодготавливаем локальную Qwen...\n\nЭто требуется только при первом запуске.");
+        splash.setText("✦ WAYPACK AI\n\nПодготавливаем локальную Qwen3.5 2B...\n\nВсё выполняется на телефоне без интернета. Первый запуск подготовит модель.");
         splash.setTextColor(Color.rgb(25,34,61));
         splash.setBackgroundColor(Color.rgb(246,247,251));
         splash.setGravity(Gravity.CENTER);
@@ -68,12 +68,12 @@ public final class MainActivity extends Activity {
     }
 
     private File prepareModel() throws IOException {
-        File target = new File(getFilesDir(),"qwen3-0.6b-q4.gguf");
+        File target = new File(getFilesDir(),"qwen3.5-2b-q5.gguf");
         long expected;
         try (AssetFileDescriptor fd = getAssets().openFd("qwen.gguf")) { expected = fd.getLength(); }
         if (expected < 100_000_000L) throw new IOException("Model weight file missing or truncated");
         if (target.isFile() && target.length()==expected) return target;
-        File partial = new File(getFilesDir(),"qwen3-0.6b-q4.partial");
+        File partial = new File(getFilesDir(),"qwen3.5-2b-q5.partial");
         try (InputStream in=new BufferedInputStream(getAssets().open("qwen.gguf",android.content.res.AssetManager.ACCESS_STREAMING),1024*1024);
              OutputStream out=new BufferedOutputStream(new FileOutputStream(partial),1024*1024)) {
             byte[] block=new byte[1024*1024];
@@ -157,7 +157,7 @@ public final class MainActivity extends Activity {
         JSONArray items=raw.optJSONArray("items");
         if(items==null)throw new IOException("Qwen не вернула поле items");
         JSONArray valid=new JSONArray();
-        for(int n=0;n<Math.min(8,items.length());n++){
+        for(int n=0;n<Math.min(10,items.length());n++){
             JSONObject item=items.optJSONObject(n);if(item==null)continue;
             String name=item.optString("name","").trim();
             if(name.isEmpty())continue;
@@ -171,7 +171,7 @@ public final class MainActivity extends Activity {
             cleaned.put("reason",why.substring(0,Math.min(110,why.length())));
             valid.put(cleaned);
         }
-        return new JSONObject().put("items",valid).put("model","Qwen3 0.6B Q4 — на устройстве").put("realModel",true);
+        return new JSONObject().put("items",valid).put("model","Qwen3.5 2B Q5 — на устройстве").put("realModel",true);
     }
 
     public final class NativeBridge {
