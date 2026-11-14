@@ -87,7 +87,7 @@ jobs:
           }
           tail -n 65 /tmp/waypack-gemma-output.txt
           grep -q "MODEL_RESPONSE_BEGIN" /tmp/waypack-gemma-output.txt
-          grep -Eq '[А-Яа-яЁё]{3,}' /tmp/waypack-gemma-output.txt
+          node -e "const fs=require('fs');const s=fs.readFileSync('/tmp/waypack-gemma-output.txt','utf8').split('MODEL_RESPONSE_BEGIN')[1]||''; if(!/[А-Яа-яЁё]/u.test(s)||!/[1-9]/.test(s))process.exit(1); console.log('Validated Cyrillic and candidate selection')"
       - name: Compile native application
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
       - name: Verify APK integrity and package ID
