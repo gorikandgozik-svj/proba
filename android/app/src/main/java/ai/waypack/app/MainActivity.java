@@ -227,7 +227,7 @@ public final class MainActivity extends Activity {
         return b.toString();
     }
     private JSONObject selectedRecommendations(String generated, java.util.List<JSONObject> choices) throws Exception {
-        if(generated.startsWith("ERROR:"))throw new IOException(generated);
+        if(generated==null || generated.startsWith("ERROR:"))generated="";
         JSONArray items=new JSONArray();
         java.util.HashSet<Integer> seen=new java.util.HashSet<>();
         java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?<!\\d)\\d{1,2}(?!\\d)").matcher(generated);
