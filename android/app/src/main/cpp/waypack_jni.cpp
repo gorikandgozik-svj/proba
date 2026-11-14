@@ -21,6 +21,31 @@ static std::string fromJava(JNIEnv * env, jstring str) {
 }
 static jstring result(JNIEnv *env, const std::string &txt) { return env->NewStringUTF(txt.c_str()); }
 static void logMsg(const std::string &msg) { __android_log_print(ANDROID_LOG_INFO,"WAYPACK-QWEN","%s",msg.c_str()); }
+
+// Detect when a complete top-level JSON object has been emitted, without
+// being confused by braces inside quoted string values.
+static bool is_complete_json(const std::string &s) {
+    bool quoted=false, escaped=false, started=false;
+    int braces=0, brackets=0;
+    for (char c : s) {
+        if (!started) { if (c==' '||c=='\\n'||c=='\\r'||c=='\\t') continue;
+            if(c!='{')return false; started=true; }
+        if (quoted) {
+            if (escaped) escaped=false;
+            else if (c=='\\\\') escaped=true;
+            else if (c=='"') quoted=false;
+            continue;
+        }
+        if (c=='"') { quoted=true; continue; }
+        if (c=='{') ++braces;
+        else if (c=='}') --braces;
+        else if (c=='[') ++brackets;
+        else if (c==']') --brackets;
+        if (braces<0 || brackets<0) return false;
+    }
+    return started && !quoted && braces==0 && brackets==0;
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, jstring jprompt) {
     std::lock_guard<std::mutex> lock(guard);
@@ -48,7 +73,7 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     if(actual<1)return result(env,"ERROR:tokenizer failed");
     llama_context_params cp=llama_context_default_params();
     cp.n_ctx=std::max(2048,actual+480);
-    cp.n_batch=cp.n_ctx;
+    cp.n_batch=512;
     cp.n_threads=std::min(4, std::max(2,(int)std::thread::hardware_concurrency()));
     cp.n_threads_batch=cp.n_threads;
     llama_context * ctx=llama_init_from_model(loadedModel,cp);
@@ -59,12 +84,13 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     llama_batch batch=llama_batch_get_one(tok.data(),actual);
     std::string text;
     llama_token id=0;
-    for(int i=0;i<370;i++){
+    for(int i=0;i<320;i++){
         if(llama_decode(ctx,batch)!=0){text="ERROR:decode failed";break;}
         id=llama_sampler_sample(sampler,ctx,-1);
         if(llama_vocab_is_eog(vocab,id))break;
         char piece[1024];int len=llama_token_to_piece(vocab,id,piece,sizeof(piece),0,true);
         if(len>0) text.append(piece,static_cast<size_t>(len));
+        if(is_complete_json(text)) break;
         batch=llama_batch_get_one(&id,1);
     }
     llama_sampler_free(sampler);
