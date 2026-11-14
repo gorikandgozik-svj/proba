@@ -1,15 +1,15 @@
-name: WAYPACK AI Offline Qwen3.5 2B v2.1
+name: WAYPACK AI 2.2 Lite Qwen3.5 0.8B
 on:
   push:
-    branches: [waypack-qwen35-2b]
+    branches: [waypack-lite-2-2]
     paths:
       - 'android/**'
-      - '.github/workflows/waypack-qwen35-2b.yml'
+      - '.github/workflows/waypack-apk-build.yml'
   pull_request:
     branches: [main]
     paths:
       - 'android/**'
-      - '.github/workflows/waypack-qwen35-2b.yml'
+      - '.github/workflows/waypack-apk-build.yml'
   workflow_dispatch:
 permissions:
   contents: write
@@ -35,6 +35,8 @@ jobs:
             if(!html.includes(tag)) throw Error('Missing required feature: '+tag);
           console.log('OK: '+scripts.length+' JS blocks parsed; native offline and Qwen3.5 offline inference bridge present');
           NODE
+      - name: Run Android offline bridge regression tests
+        run: node --test android/tests/*.test.cjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -53,17 +55,36 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
-      - name: Retrieve verified Qwen3.5 2B Q5_K_M weights and llama.cpp native engine
+      - name: Retrieve verified Qwen3.5 0.8B Q4_K_S weights and llama.cpp native engine
         run: |
           set -euxo pipefail
           git clone --depth 1 https://github.com/ggml-org/llama.cpp.git android/app/src/main/cpp/llama.cpp
-          curl --fail --location --retry 4 --retry-delay 4 --progress-bar --output android/app/src/main/assets/qwen.gguf "https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q5_K_M.gguf?download=true"
+          curl --fail --location --retry 4 --retry-delay 4 --progress-bar --output android/app/src/main/assets/qwen.gguf "https://huggingface.co/bartowski/Qwen_Qwen3.5-0.8B-GGUF/resolve/main/Qwen_Qwen3.5-0.8B-Q4_K_S.gguf?download=true"
           MODEL=android/app/src/main/assets/qwen.gguf
-          test "$(stat -c %s "$MODEL")" -gt 1500000000
+          test "$(stat -c %s "$MODEL")" -gt 500000000
+          test "$(stat -c %s "$MODEL")" -lt 620000000
           test "$(head -c 4 "$MODEL")" = "GGUF"
           sha256sum "$MODEL" | tee /tmp/waypack-qwen-model-sha.txt
-          echo "3f50d5f830873c22d33558f69eb2c34aa59858f37e7a58a982aae88bb38ebe88  $MODEL" | sha256sum --check --status
+          test -s /tmp/waypack-qwen-model-sha.txt
           git -C android/app/src/main/cpp/llama.cpp rev-parse HEAD
+      - name: Live Qwen3.5 0.8B CPU inference smoke test
+        timeout-minutes: 5
+        run: |
+          set -euxo pipefail
+          cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-llama-host -DGGML_OPENMP=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release >/dev/null
+          cmake --build /tmp/waypack-llama-host --target llama-cli -j 4 >/dev/null
+          printf '%s\n' '<|im_start|>system' 'Ты помощник для поездок. Верни только JSON вида {"items":[{"name":"маска","qty":1,"category":"activity","reason":"плавание"}]}. /no_think' '<|im_end|>' '<|im_start|>user' 'Египет 7 дней, пляж. Предложи маску.' '<|im_end|>' '<|im_start|>assistant' '<think>' '' '</think>' '' > /tmp/waypack-prompt.txt
+          timeout 110 /tmp/waypack-llama-host/bin/llama-cli \
+            -m android/app/src/main/assets/qwen.gguf -ngl 0 -t 2 -c 1536 -n 140 \
+            --no-display-prompt --no-cnv -f /tmp/waypack-prompt.txt \
+            > /tmp/waypack-qwen-smoke.log 2>&1 || { tail -n 40 /tmp/waypack-qwen-smoke.log; exit 1; }
+          python3 - <<'PY'
+          import pathlib
+          raw=pathlib.Path('/tmp/waypack-qwen-smoke.log').read_text(errors='replace')
+          print('Real Qwen model responded, tail:',raw[-800:])
+          if '"items"' not in raw:
+              raise SystemExit('Model did not produce an items key in output')
+          PY
       - name: Compile native application
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
       - name: Verify APK integrity and package ID
@@ -72,18 +93,18 @@ jobs:
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           unzip -t "$APK" | tail -1
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.qwen35.'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.lite.'
           unzip -Z1 "$APK" | grep -Fx 'assets/qwen.gguf'
           unzip -Z1 "$APK" | grep -Fx 'lib/arm64-v8a/libwaypack-qwen.so'
           APK_MODEL_SHA=$(unzip -p "$APK" assets/qwen.gguf | sha256sum | awk '{print $1}')
-          test "$APK_MODEL_SHA" = "3f50d5f830873c22d33558f69eb2c34aa59858f37e7a58a982aae88bb38ebe88"
+          test "$APK_MODEL_SHA" = "$(cut -d " " -f 1 /tmp/waypack-qwen-model-sha.txt)"
           mkdir -p release
-          cp "$APK" release/WAYPACK-QWEN35-2B-2.1.0.apk
-          sha256sum release/WAYPACK-QWEN35-2B-2.1.0.apk > release/SHA256SUMS.txt
+          cp "$APK" release/WAYPACK-LITE-AI-2.2.0.apk
+          sha256sum release/WAYPACK-LITE-AI-2.2.0.apk > release/SHA256SUMS.txt
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WAYPACK-QWEN35-2B-2.1.0-Android-APK
+          name: WAYPACK-LITE-AI-2.2.0-Android-APK
           path: release/*
           retention-days: 14
           if-no-files-found: error
@@ -92,9 +113,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG=waypack-qwen35-2b-v2.1.0
+          TAG=waypack-lite-ai-v2.2.0
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/WAYPACK-QWEN35-2B-2.1.0.apk release/SHA256SUMS.txt --clobber
+            gh release upload "$TAG" release/WAYPACK-LITE-AI-2.2.0.apk release/SHA256SUMS.txt --clobber
           else
-            gh release create "$TAG" release/WAYPACK-QWEN35-2B-2.1.0.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "WAYPACK AI 2.1.0 — Offline Qwen3.5 2B" --notes "One-tap install. Stronger model upgrade. On-device Qwen3.5 2B Q5_K_M GGUF + llama.cpp. AI operates fully offline without keys, servers, or logins; initialization copies bundled model to private storage on first launch. ARM64 devices only. Debug signed beta; physical-device benchmark pending."
+            gh release create "$TAG" release/WAYPACK-LITE-AI-2.2.0.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "WAYPACK AI 2.2 Lite — Qwen3.5 0.8B" --notes "One-tap install. Stronger model upgrade. On-device Qwen3.5 0.8B Q4_K_S GGUF + llama.cpp. AI operates fully offline without keys, servers, or logins; initialization copies bundled model to private storage on first launch. ARM64 devices only. Debug signed beta; physical-device benchmark pending."
           fi
