@@ -16,13 +16,20 @@ int main(int argc,char**argv){
  const llama_vocab *vocab=llama_model_get_vocab(model);
  const std::string prompt =
  "<start_of_turn>user\n"
- "Ты помощник по упаковке чемодана. Назови ровно ТРИ дополнительных полезных предмета для этой поездки, которых нет в списке. "
- "Ответ — только три короткие строки на русском, каждая начинается с «- ». Без пояснений и повтора имеющихся вещей. "
- "Не предсказывай погоду и не придумывай правила въезда.\n"
- "Страна: Египет. Город: Шарм-эш-Шейх. Дней: 7. Дата: 2026-11-16.\n"
- "Занятия: beach, snorkel, excursion.\n"
- "УЖЕ есть: Паспорт, Купальник, Солнцезащитный крем, Футболка.\n"
- "<end_of_turn>\n<start_of_turn>model\n";
+ "Выбери ТРИ самых полезных предмета из списка для поездки. Предметы уже проверены: их нет в чемодане. "
+ "Ответь только ТРЕМЯ разными номерами через запятую, например 2,4,1. Без слов.\n"
+ "Направление: Египет, Шарм-эш-Шейх. Дней: 7. Дата: 2026-11-16. Занятия: beach, snorkel, excursion, \n"
+ "ВАРИАНТЫ:\n"
+ "1. Гермомешок для телефона\n"
+ "2. Полотенце из микрофибры\n"
+ "3. Прищепки для пляжного полотенца\n"
+ "4. Складная пляжная сумка\n"
+ "5. Мешочек для мокрых вещей\n"
+ "6. Бирка с контактом на багаж\n"
+ "7. Мешок для грязной одежды\n"
+ "8. Небольшой дорожный органайзер\n"
+ "9. Пакеты с застёжкой\n"
+ "Три номера: <end_of_turn>\n<start_of_turn>model\n";
  int n=llama_tokenize(vocab,prompt.c_str(),prompt.size(),nullptr,0,true,true);
  if(n>=0){std::cerr<<"Tokenizer count unexpectedly nonnegative\n";return 4;}
  n=-n;
@@ -67,5 +74,7 @@ int main(int argc,char**argv){
  std::cout<<"SMOKE_TOTAL_MS="<<sec<<"\n";
  std::cout<<"MODEL_RESPONSE_BEGIN\n"<<answer<<"\nMODEL_RESPONSE_END\n";
  if(answer.empty())return 9;
+ // Verify the model actually selected a candidate instead of repeating a packed item.
+ if(answer.find_first_of("123456789")==std::string::npos)return 10;
  return 0;
 }
