@@ -3,7 +3,7 @@ android {
   namespace 'ai.waypack.app'
   compileSdk 35
   defaultConfig {
-    applicationId 'ai.waypack.app'
+    applicationId 'ai.waypack.cloud'
     minSdk 26
     targetSdk 35
     versionCode 6
