@@ -65,7 +65,7 @@ jobs:
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           unzip -t "$APK" | tail -1
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.app.'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.cloud.'
           mkdir -p release
           cp "$APK" release/WAYPACK-AI-1.5.0.apk
           sha256sum release/WAYPACK-AI-1.5.0.apk > release/SHA256SUMS.txt
