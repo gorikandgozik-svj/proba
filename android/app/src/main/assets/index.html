@@ -23,7 +23,7 @@ window.fetch=function(request,options){
  let url;try{url=new URL(typeof request==='string'?request:request.url,location.href)}catch{return oldFetch(request,options)}
  if(url.pathname==='/api/status'){
    const ready=!!native.isModelReady();
-   return Promise.resolve(new Response(JSON.stringify({qwen:ready,model:ready?'Qwen3 0.6B Q4 · offline':null,mode:'local-gguf'}),{status:200,headers:{'Content-Type':'application/json'}}));
+   return Promise.resolve(new Response(JSON.stringify({qwen:ready,model:ready?'Qwen3.5 2B Q5 · offline':null,mode:'local-gguf'}),{status:200,headers:{'Content-Type':'application/json'}}));
  }
  if(url.pathname==='/api/ai'){
   return new Promise((resolve,reject)=>{
