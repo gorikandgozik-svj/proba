@@ -59,10 +59,7 @@ jobs:
             adb shell ps -A | grep ai.waypack.cloud || true
             adb logcat -d -v brief | grep 'WAYPACK-UI' | tail -12 || true
             adb shell dumpsys activity activities | grep 'topResumedActivity=ActivityRecord.*ai.waypack.cloud'
-            if adb logcat -d -s AndroidRuntime:E | grep -E 'FATAL EXCEPTION|Process: ai.waypack.cloud'; then
-              echo "Android runtime crash detected"
-              exit 1
-            fi
+            if adb logcat -d -s AndroidRuntime:E | grep -E 'FATAL EXCEPTION|Process: ai.waypack.cloud'; then echo 'Android runtime crash detected'; exit 1; fi
             echo "WAYPACK smoke PASS: installed, launched, process alive, screenshot captured"
       - name: Upload screenshot
         if: always()
