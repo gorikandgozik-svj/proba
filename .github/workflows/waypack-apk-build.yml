@@ -1,14 +1,16 @@
-name: WAYPACK AI Android 1.4
+name: WAYPACK AI Android 1.5
 on:
   push:
-    branches: [waypack-apk-build]
+    branches: [waypack-ai-v1-5-cloud]
     paths:
       - 'android/**'
+      - 'android-tests/**'
       - '.github/workflows/waypack-apk-build.yml'
   pull_request:
     branches: [main]
     paths:
       - 'android/**'
+      - 'android-tests/**'
       - '.github/workflows/waypack-apk-build.yml'
   workflow_dispatch:
 permissions:
@@ -31,10 +33,12 @@ jobs:
           const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
           if(scripts.length<1) throw Error('Missing offline engine or UI script');
           scripts.forEach((script,i)=>new vm.Script(script[1],{filename:'inline-'+i+'.js'}));
-          for (const tag of ['PackingEngine','localStorage','WAYPACK','if(isNative)apiBase=','Content-Security-Policy'])
+          for (const tag of ['PackingEngine','localStorage','WAYPACK','window.waypackCloudDone','startCloudAI','Content-Security-Policy'])
             if(!html.includes(tag)) throw Error('Missing required feature: '+tag);
-          console.log('OK: '+scripts.length+' JS blocks parsed; native offline and Qwen backend preset present');
+          console.log('OK: '+scripts.length+' JS blocks parsed; offline rules, automatic cloud Qwen bridge and CSP present');
           NODE
+      - name: Integration test automatic cloud UI and fallback
+        run: node --test android-tests/cloud-ui.test.cjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -63,12 +67,12 @@ jobs:
           unzip -t "$APK" | tail -1
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep 'package: name=.ai.waypack.app.'
           mkdir -p release
-          cp "$APK" release/WAYPACK-AI-1.4.0.apk
-          sha256sum release/WAYPACK-AI-1.4.0.apk > release/SHA256SUMS.txt
+          cp "$APK" release/WAYPACK-AI-1.5.0.apk
+          sha256sum release/WAYPACK-AI-1.5.0.apk > release/SHA256SUMS.txt
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WAYPACK-AI-1.4.0-Android-APK
+          name: WAYPACK-AI-1.5.0-Android-APK
           path: release/*
           retention-days: 90
           if-no-files-found: error
@@ -77,9 +81,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
-          TAG=waypack-ai-android-v1.4.0
+          TAG=waypack-ai-android-v1.5.0
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/WAYPACK-AI-1.4.0.apk release/SHA256SUMS.txt --clobber
+            gh release upload "$TAG" release/WAYPACK-AI-1.5.0.apk release/SHA256SUMS.txt --clobber
           else
-            gh release create "$TAG" release/WAYPACK-AI-1.4.0.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "WAYPACK AI Android 1.4.0" --notes "Standalone Android APK. Offline packing planner works immediately without accounts or keys. Qwen augmentation is optional and requires an active hosted backend. Debug-signed test build, not a Play Store release."
+            gh release create "$TAG" release/WAYPACK-AI-1.5.0.apk release/SHA256SUMS.txt --target "$GITHUB_SHA" --title "WAYPACK AI Android 1.4.0" --notes "Standalone Android APK. Offline packing planner works immediately without accounts or keys. Qwen automatically analyzes packing via OVHcloud anonymous HTTPS API, with Llama fallback and offline deterministic list. Free anonymous cloud tier is rate-limited; no credentials required. Debug-signed Android APK; not Play Store release."
           fi
