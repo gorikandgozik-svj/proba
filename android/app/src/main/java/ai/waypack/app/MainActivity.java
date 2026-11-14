@@ -16,7 +16,10 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.content.res.AssetFileDescriptor;
+import com.google.ai.edge.litert.Accelerator;
+import com.google.ai.edge.litert.CompiledModel;
+import com.google.ai.edge.litert.TensorBuffer;
+import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.*;
@@ -29,17 +32,12 @@ public final class MainActivity extends Activity {
     private static final String APP_HOST = "appassets.androidplatform.net";
     private static final String APP_URL = "https://" + APP_HOST + "/index.html";
     private static final int SAVE_TEXT = 420;
-    private static final String MODEL_SHA256 = "08b4c8b88efb38ea0b59aa0dd4c8259ada515fd66448136df737a273b7da2d47";
-    private static final ExecutorService worker = Executors.newSingleThreadExecutor();
-    private static boolean libraryAvailable;
-    static {
-        try { System.loadLibrary("waypack-ai"); libraryAvailable = true; }
-        catch (Throwable err) { libraryAvailable = false; }
-    }
-    private static native String inferLocal(String modelPath, String prompt);
-    private volatile boolean modelReady = false;
+    private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private volatile boolean modelReady=false;
     private final java.util.concurrent.atomic.AtomicInteger requestSerial=new java.util.concurrent.atomic.AtomicInteger();
-    private File modelFile;
+    private CompiledModel rankerModel;
+    private List<TensorBuffer> rankerInput;
+    private List<TensorBuffer> rankerOutput;
     private WebView view;
     private String textToSave = "";
 
@@ -47,57 +45,26 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         getWindow().setStatusBarColor(Color.rgb(21,32,61));
         getWindow().setNavigationBarColor(Color.rgb(21,32,61));
-        // The interface MUST render immediately; 183 MB model extraction can
-        // take an arbitrary amount of time on a slow phone.
+        // Render the complete deterministic app without waiting for ML runtime.
         showWebApp();
         worker.execute(() -> {
             try {
-                if(libraryAvailable) {
-                    modelFile=prepareModel();
-                    modelReady=modelFile!=null&&modelFile.isFile();
-                }
-            }catch(Exception ex) {
-                android.util.Log.e("WAYPACK","Optional AI model unavailable; fast packing still works",ex);
+                rankerModel=CompiledModel.create(
+                    getAssets(),"waypack-ranker.tflite",new CompiledModel.Options(Accelerator.CPU));
+                rankerInput=rankerModel.createInputBuffers();
+                rankerOutput=rankerModel.createOutputBuffers();
+                if(rankerInput.size()!=1||rankerOutput.size()!=1)
+                    throw new IllegalStateException("Unexpected LiteRT tensor count");
+                modelReady=true;
+            }catch(Throwable err){
                 modelReady=false;
+                android.util.Log.w("WAYPACK","Google LiteRT initialization failed, safe fallback enabled",err);
             }
-            runOnUiThread(() -> {
-                if(modelReady&&view!=null&&!isFinishing()&&!isDestroyed())
+            if(modelReady)runOnUiThread(() -> {
+                if(view!=null&&!isFinishing()&&!isDestroyed())
                     view.evaluateJavascript("window.waypackModelReady&&window.waypackModelReady()",null);
             });
         });
-    }
-
-    private File prepareModel() throws IOException {
-        File target=new File(getFilesDir(),"gemma3-270m-iq2m.gguf");
-        long expected;
-        try(AssetFileDescriptor fd=getAssets().openFd("model.gguf")) {expected=fd.getLength();}
-        if(expected<170_000_000L || expected>210_000_000L)throw new IOException("Incorrect bundled model size");
-        android.content.SharedPreferences preferences=getSharedPreferences("waypack_model",MODE_PRIVATE);
-        if(target.isFile()&&target.length()==expected&&MODEL_SHA256.equals(preferences.getString("sha256","")))return target;
-        File partial=new File(getFilesDir(),"gemma3-270m-iq2m.partial");
-        java.security.MessageDigest digest;
-        try{digest=java.security.MessageDigest.getInstance("SHA-256");}
-        catch(java.security.NoSuchAlgorithmException e){throw new IOException("SHA-256 unavailable",e);}
-        try(InputStream in=new BufferedInputStream(getAssets().open("model.gguf",android.content.res.AssetManager.ACCESS_STREAMING),1024*1024);
-            OutputStream out=new BufferedOutputStream(new FileOutputStream(partial),1024*1024)){
-            byte[] block=new byte[1024*1024];
-            int read;
-            while((read=in.read(block))!=-1){
-                out.write(block,0,read);
-                digest.update(block,0,read);
-            }
-            out.flush();
-        }catch(IOException e){partial.delete();throw e;}
-        StringBuilder checksum=new StringBuilder(64);
-        for(byte v:digest.digest())checksum.append(String.format(java.util.Locale.ROOT,"%02x",v&0xff));
-        if(partial.length()!=expected||!MODEL_SHA256.equals(checksum.toString())){
-            partial.delete();
-            throw new IOException("Model checksum mismatch");
-        }
-        if(target.exists()&&!target.delete())throw new IOException("Cannot replace previous model");
-        if(!partial.renameTo(target))throw new IOException("Cannot commit verified model");
-        preferences.edit().putString("sha256",MODEL_SHA256).apply();
-        return target;
     }
 
     private void showWebApp() {
@@ -266,7 +233,7 @@ public final class MainActivity extends Activity {
                 .put("reason","Подобрано правилами · "+c.getString("reason")));
         }
         return new JSONObject().put("items",items)
-            .put("model","Gemma 3 270M · быстрый подбор")
+            .put("model","WAYPACK Fast Engine")
             .put("realModel",aiSelections>0)
             .put("selectedByAI",aiSelections);
     }
