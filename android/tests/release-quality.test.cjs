@@ -98,10 +98,10 @@ test('build uses lighter GGUF and supported Android ABI',()=>{
 
 
 test('Android startup and native recommendation are independent from model load',()=>{
- const ui=s.indexOf('showWebApp();');
- const extraction=s.indexOf('worker.execute(() -> {',ui);
+ const ui=java.indexOf('showWebApp();');
+ const extraction=java.indexOf('worker.execute(() -> {',ui);
  assert.ok(ui>0&&extraction>ui,'the WebView must show before background model extraction');
- const bridge=s.slice(s.indexOf('@JavascriptInterface public void runModel('),s.indexOf('@JavascriptInterface public void shareText('));
+ const bridge=java.slice(java.indexOf('@JavascriptInterface public void runModel('),java.indexOf('@JavascriptInterface public void shareText('));
  const response=bridge.indexOf('deliver(id,200,instant.toString());');
  const neural=bridge.indexOf('worker.execute(() -> {');
  assert.ok(response>=0&&neural>response,'send fallback BEFORE scheduling slow Gemma');
