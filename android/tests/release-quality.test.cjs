@@ -82,12 +82,61 @@ test('local model is hashed and requests are bounded',()=>{
 test('AI cancels obsolete inferences; fallback is labeled',()=>{
  assert.ok(html.includes('aiController.abort()'));
  assert.ok(html.includes('if(aiController===controller)'));
+ assert.ok(!html.includes('isNative?15000:28000'));
+ assert.ok(!html.includes('Gemma не ответила вовремя'));
+ assert.ok(html.includes('window.waypackAcceptEnrichment'));
+ assert.ok(html.includes('window.waypackModelReady'));
  assert.ok(html.includes("autoAIStatus=data.realModel?'complete':'fallback'"));
  assert.ok(!html.includes('data-action="ai"'));
 });
 test('build uses lighter GGUF and supported Android ABI',()=>{
- assert.ok(gradle.includes("applicationId 'ai.waypack.lite'"));
- assert.ok(gradle.includes("versionName '3.2.0'"));
+ assert.ok(gradle.includes("applicationId 'ai.waypack.instant'"));
+ assert.ok(gradle.includes("versionName '4.0.0'"));
  assert.ok(gradle.includes("abiFilters 'arm64-v8a'"));
  assert.ok(gradle.includes("noCompress += ['gguf']"));
+});
+
+
+test('Android startup and native recommendation are independent from model load',()=>{
+ const ui=s.indexOf('showWebApp();');
+ const extraction=s.indexOf('worker.execute(() -> {',ui);
+ assert.ok(ui>0&&extraction>ui,'the WebView must show before background model extraction');
+ const bridge=s.slice(s.indexOf('@JavascriptInterface public void runModel('),s.indexOf('@JavascriptInterface public void shareText('));
+ const response=bridge.indexOf('deliver(id,200,instant.toString());');
+ const neural=bridge.indexOf('worker.execute(() -> {');
+ assert.ok(response>=0&&neural>response,'send fallback BEFORE scheduling slow Gemma');
+ assert.ok(bridge.includes('selectedRecommendations("",choices)'));
+ assert.ok(bridge.includes('waypackNativeEnhance'));
+ assert.ok(bridge.includes('serial==requestSerial.get()'));
+});
+test('native fetch bridge resolves fast result independently of optional inference',async()=>{
+ let lastId='',invoked=0,enhanceCount=0;
+ const window={fetch:async()=>{throw Error('forbidden network')}};
+ const native={
+  isModelReady:()=>true,
+  isNeuralReady:()=>false,
+  runModel(id,payload){
+   lastId=id;invoked++;
+   assert.equal(JSON.parse(payload).activities[0],'beach');
+   queueMicrotask(()=>window.waypackNativeResolve(id,JSON.stringify({
+    items:[{name:'Мешок для грязной одежды',qty:1,category:'other'}],
+    realModel:false,model:'WAYPACK Fast Engine'
+   }),200));
+  }
+ };
+ window.WaypackNative=native;
+ const sandbox={window,location:{href:'https://appassets.androidplatform.net/index.html'},URL,Response,DOMException,Promise};
+ vm.runInNewContext(scripts[0],sandbox,{timeout:2000});
+ const status=await (await window.fetch('/api/status')).json();
+ assert.equal(status.qwen,true);
+ assert.equal(status.neuralReady,false);
+ const response=await window.fetch('/api/ai',{method:'POST',body:JSON.stringify({activities:['beach']})});
+ const data=await response.json();
+ assert.equal(data.items[0].name,'Мешок для грязной одежды');
+ assert.equal(data.realModel,false);
+ assert.equal(invoked,1);
+ window.waypackAcceptEnrichment=()=>{enhanceCount++};
+ window.waypackNativeEnhance(lastId,JSON.stringify({realModel:true,items:[]}));
+ window.waypackNativeEnhance('old-'+lastId,JSON.stringify({realModel:true,items:[]}));
+ assert.equal(enhanceCount,1);
 });
