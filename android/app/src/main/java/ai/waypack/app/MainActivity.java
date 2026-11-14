@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
     }
     private static native String inferLocal(String modelPath, String prompt);
     private volatile boolean modelReady = false;
+    private final java.util.concurrent.atomic.AtomicInteger requestSerial=new java.util.concurrent.atomic.AtomicInteger();
     private File modelFile;
     private WebView view;
     private String textToSave = "";
@@ -141,7 +142,8 @@ public final class MainActivity extends Activity {
     }
     private static String clipped(String input,int max){
         if(input==null)return "";
-        return input.replaceAll("[\r\n\t]"," ").trim().substring(0,Math.min(input.trim().length(),max));
+        String value=input.replaceAll("[\\r\\n\\t]"," ").trim();
+        return value.substring(0,Math.min(value.length(),max));
     }
     private String makePrompt(JSONObject data) throws Exception {
         JSONObject p=data.getJSONObject("profile");
@@ -223,17 +225,19 @@ public final class MainActivity extends Activity {
                 deliver(id,503,"{\"error\":\"Модель Gemma не загружена\"}");
                 return;
             }
+            final int serial=requestSerial.incrementAndGet();
             worker.execute(() -> {
+                if(serial!=requestSerial.get())return;
                 try {
                     JSONObject data=new JSONObject(payload);
                     JSONObject profile=data.optJSONObject("profile");
                     if(profile==null || !data.has("activities"))throw new IOException("Некорректные данные поездки");
                     String generated=inferLocal(modelFile.getAbsolutePath(),makePrompt(data));
                     JSONObject ready=validateResponse(generated);
-                    deliver(id,200,ready.toString());
+                    if(serial==requestSerial.get())deliver(id,200,ready.toString());
                 } catch(Throwable e) {
                     String msg=e.getMessage()==null?"Ошибка Qwen":e.getMessage();
-                    deliver(id,502,"{\"error\":"+JSONObject.quote(msg.substring(0,Math.min(msg.length(),140)))+"}");
+                    if(serial==requestSerial.get())deliver(id,502,"{\"error\":"+JSONObject.quote(msg.substring(0,Math.min(msg.length(),140)))+"}");
                 }
             });
         }
