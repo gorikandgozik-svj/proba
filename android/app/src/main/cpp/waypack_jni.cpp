@@ -57,6 +57,7 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     llama_sampler * sampler=llama_sampler_chain_init(sp);
     llama_sampler_chain_add(sampler,llama_sampler_init_greedy());
     llama_batch batch=llama_batch_get_one(tok.data(),actual);
+    llama_token nextToken = 0;
     std::string text;
     llama_token id=0;
     for(int i=0;i<370;i++){
@@ -65,7 +66,8 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
         if(llama_vocab_is_eog(vocab,id))break;
         char piece[1024];int len=llama_token_to_piece(vocab,id,piece,sizeof(piece),0,true);
         if(len>0) text.append(piece,static_cast<size_t>(len));
-        batch=llama_batch_get_one(&id,1);
+        nextToken=id;
+        batch=llama_batch_get_one(&nextToken,1);
     }
     llama_sampler_free(sampler);
     llama_free(ctx);
