@@ -109,8 +109,8 @@ test('Android startup and native recommendation are independent from model load'
  assert.ok(ui>0&&extraction>ui,'the WebView must show before background model extraction');
  const bridge=java.slice(java.indexOf('@JavascriptInterface public void runModel('),java.indexOf('@JavascriptInterface public void shareText('));
  const response=bridge.indexOf('deliver(id,200,instant.toString());');
- const neural=bridge.indexOf('worker.execute(() -> {');
- assert.ok(response>=0&&neural>response,'send fallback BEFORE scheduling slow Gemma');
+ const neural=bridge.indexOf('worker.execute(()->{');
+ assert.ok(response>=0&&neural>response,'send fallback BEFORE scheduling tiny LiteRT ranking');
  assert.ok(bridge.includes('selectedRecommendations("",choices)'));
  assert.ok(bridge.includes('waypackNativeEnhance'));
  assert.ok(bridge.includes('neuralRecommendations(data,choices)'));
