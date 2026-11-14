@@ -7,7 +7,6 @@ const {join}=require('node:path');
 const base=join(__dirname,'..');
 const html=fs.readFileSync(join(base,'app/src/main/assets/index.html'),'utf8');
 const java=fs.readFileSync(join(base,'app/src/main/java/ai/waypack/app/MainActivity.java'),'utf8');
-const cpp=fs.readFileSync(join(base,'app/src/main/cpp/waypack_jni.cpp'),'utf8');
 const manifest=fs.readFileSync(join(base,'app/src/main/AndroidManifest.xml'),'utf8');
 const gradle=fs.readFileSync(join(base,'app/build.gradle'),'utf8');
 const scripts=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]);
@@ -69,15 +68,22 @@ test('WebView blocks remote requests and app backup/debugging',()=>{
  assert.ok(java.includes('settings.setAllowUniversalAccessFromFileURLs(false)'));
  assert.ok(java.includes('return missing();'));
  assert.ok(html.includes("connect-src 'none'"));
+ assert.ok(!gradle.includes('libllama'));
+ assert.ok(!gradle.includes('llama.cpp'));
 });
-test('local model is hashed and requests are bounded',()=>{
- assert.match(java,/MODEL_SHA256 = "[a-f0-9]{64}"/);
- assert.match(java,/MessageDigest\.getInstance\("SHA-256"\)/);
- assert.ok(java.includes('payload.length()>16000'));
- assert.ok(cpp.includes('llama_sampler_init_grammar'));
- assert.ok(cpp.includes('root ::= [1-9]'));
- assert.ok(cpp.includes('std::chrono::seconds(13)'));
- assert.ok(cpp.includes('for(int i=0;i<18;i++)'));
+test('real Google LiteRT model runs in Android, not a fake result or Gemma',()=>{
+ assert.ok(java.includes('com.google.ai.edge.litert.CompiledModel'));
+ assert.ok(java.includes('CompiledModel.create('));
+ assert.ok(java.includes('new CompiledModel.Options(Accelerator.CPU)'));
+ assert.ok(java.includes('rankerModel.run(rankerInput,rankerOutput)'));
+ assert.ok(java.includes('rankerInput.get(0).writeFloat(input)'));
+ assert.ok(java.includes('rankerOutput.get(0).readFloat()[0]'));
+ assert.ok(java.includes('new float[18]'));
+ assert.ok(java.includes('selectedRecommendations("",choices)'));
+ assert.ok(!java.includes('inferLocal('));
+ assert.ok(!java.includes('modelFile.getAbsolutePath()'));
+ assert.ok(gradle.includes("com.google.ai.edge.litert:litert:2.3.0"));
+ assert.ok(!gradle.includes('externalNativeBuild'));
 });
 test('AI cancels obsolete inferences; fallback is labeled',()=>{
  assert.ok(html.includes('aiController.abort()'));
@@ -90,10 +96,10 @@ test('AI cancels obsolete inferences; fallback is labeled',()=>{
  assert.ok(!html.includes('data-action="ai"'));
 });
 test('build uses lighter GGUF and supported Android ABI',()=>{
- assert.ok(gradle.includes("applicationId 'ai.waypack.instant'"));
- assert.ok(gradle.includes("versionName '4.0.0'"));
- assert.ok(gradle.includes("abiFilters 'arm64-v8a'"));
- assert.ok(gradle.includes("noCompress += ['gguf']"));
+ assert.ok(gradle.includes("applicationId 'ai.waypack.litert'"));
+ assert.ok(gradle.includes("versionName '5.0.0'"));
+ assert.ok(gradle.includes("'armeabi-v7a'"));
+ assert.ok(gradle.includes("noCompress += ['tflite']"));
 });
 
 
@@ -107,6 +113,8 @@ test('Android startup and native recommendation are independent from model load'
  assert.ok(response>=0&&neural>response,'send fallback BEFORE scheduling slow Gemma');
  assert.ok(bridge.includes('selectedRecommendations("",choices)'));
  assert.ok(bridge.includes('waypackNativeEnhance'));
+ assert.ok(bridge.includes('neuralRecommendations(data,choices)'));
+ assert.ok(!bridge.includes('inferLocal('));
  assert.ok(bridge.includes('serial==requestSerial.get()'));
 });
 test('native fetch bridge resolves fast result independently of optional inference',async()=>{
@@ -139,4 +147,15 @@ test('native fetch bridge resolves fast result independently of optional inferen
  window.waypackNativeEnhance(lastId,JSON.stringify({realModel:true,items:[]}));
  window.waypackNativeEnhance('old-'+lastId,JSON.stringify({realModel:true,items:[]}));
  assert.equal(enhanceCount,1);
+});
+
+test('model is a standalone task-trained ranker and labels are honest',()=>{
+ const trainer=fs.readFileSync(join(base,'tools/train_waypack_ranker.py'),'utf8');
+ assert.ok(trainer.includes('synthetic travel-item relevance'));
+ assert.ok(trainer.includes('tf.lite.TFLiteConverter.from_keras_model'));
+ assert.ok(trainer.includes('heldout'));
+ assert.ok(html.includes("data.modelKind!=='task-specific-18d-ranker'"));
+ assert.ok(html.includes('protectedInstant'));
+ assert.ok(html.includes('const available=Math.max(0,3-protectedInstant.length)'));
+ assert.ok(java.includes('.put("modelKind","task-specific-18d-ranker")'));
 });
