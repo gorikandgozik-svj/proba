@@ -31,7 +31,7 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     if(!loadedModel || path != loadedPath){
         if (loadedModel) {llama_model_free(loadedModel);loadedModel=nullptr;}
         llama_model_params mp=llama_model_default_params();
-        mp.n_gpu_layers=0; mp.use_mmap=true;
+        mp.n_gpu_layers=0;
         loadedModel=llama_model_load_from_file(path.c_str(),mp);
         if(!loadedModel)return result(env,"ERROR:model load failed");
         loadedPath=path;
