@@ -59,7 +59,7 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     llama_sampler * sampler=llama_sampler_chain_init(sp);
     // Restrict output to exactly three candidate IDs rather than unconstrained prose.
     // This avoids long answers, repeated checklists and JSON formatting failures.
-    static const char * grammar = "root ::= [1-9] \\",\\" [1-9] \\",\\" [1-9]";
+    static const char * grammar = "root ::= [1-9] \",\" [1-9] \",\" [1-9]";
     llama_sampler * constrained = llama_sampler_init_grammar(vocab,grammar,"root");
     if (!constrained) { llama_sampler_free(sampler); llama_free(ctx); return result(env,"ERROR:invalid output grammar"); }
     llama_sampler_chain_add(sampler,constrained);
