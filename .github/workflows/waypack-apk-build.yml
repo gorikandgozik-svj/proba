@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euxo pipefail
           git clone --depth 1 https://github.com/ggml-org/llama.cpp.git android/app/src/main/cpp/llama.cpp
-          curl --fail --location --retry 4 --retry-delay 4 --progress-bar --output android/app/src/main/assets/qwen.gguf "https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf?download=true"
+          curl --fail --location --retry 4 --retry-delay 4 --progress-bar --output android/app/src/main/assets/qwen.gguf "https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen_Qwen3-0.6B-Q4_K_M.gguf?download=true"
           MODEL=android/app/src/main/assets/qwen.gguf
           test "$(stat -c %s "$MODEL")" -gt 400000000
           test "$(head -c 4 "$MODEL")" = "GGUF"
