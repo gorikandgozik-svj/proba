@@ -58,9 +58,10 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     llama_sampler_chain_add(sampler,llama_sampler_init_greedy());
     llama_batch batch=llama_batch_get_one(tok.data(),actual);
     std::string text;
+    llama_token id=0;
     for(int i=0;i<370;i++){
         if(llama_decode(ctx,batch)!=0){text="ERROR:decode failed";break;}
-        llama_token id=llama_sampler_sample(sampler,ctx,-1);
+        id=llama_sampler_sample(sampler,ctx,-1);
         if(llama_vocab_is_eog(vocab,id))break;
         char piece[1024];int len=llama_token_to_piece(vocab,id,piece,sizeof(piece),0,true);
         if(len>0) text.append(piece,static_cast<size_t>(len));
