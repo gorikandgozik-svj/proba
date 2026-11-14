@@ -8,6 +8,13 @@
 #include "llama.h"
 #include "ggml-backend.h"
 
+static constexpr const char * PACKLIST_GRAMMAR = R"WAYPACK_GBNF(
+root ::= "{" ws "\"items\"" ws ":" ws "[" ws (item ("," ws item)*)? "]" ws "}" ws
+item ::= "{" ws "\"name\"" ws ":" ws string "," ws "\"qty\"" ws ":" ws number "," ws "\"category\"" ws ":" ws string "," ws "\"reason\"" ws ":" ws string "}" ws
+string ::= "\"" ([^"\\\x7F\x00-\x1F] | "\\" (["\\bfnrt] | "u" [0-9a-fA-F]{4}))* "\"" ws
+number ::= [1-9] [0-9]? ws
+ws ::= | " " | "\n" [ \t]{0,20}
+)WAYPACK_GBNF";
 static std::mutex guard;
 static llama_model * loadedModel = nullptr;
 static std::string loadedPath;
@@ -80,11 +87,18 @@ Java_ai_waypack_app_MainActivity_inferLocal(JNIEnv *env, jclass, jstring jpath, 
     if(!ctx)return result(env,"ERROR:context init failed");
     llama_sampler_chain_params sp=llama_sampler_chain_default_params();
     llama_sampler * sampler=llama_sampler_chain_init(sp);
+    llama_sampler * jsonOnly=llama_sampler_init_grammar(vocab,PACKLIST_GRAMMAR,"root");
+    if (!jsonOnly) {
+        llama_sampler_free(sampler);
+        llama_free(ctx);
+        return result(env,"ERROR:JSON grammar initialization failed");
+    }
+    llama_sampler_chain_add(sampler,jsonOnly);
     llama_sampler_chain_add(sampler,llama_sampler_init_greedy());
     llama_batch batch=llama_batch_get_one(tok.data(),actual);
     std::string text;
     llama_token id=0;
-    for(int i=0;i<320;i++){
+    for(int i=0;i<450;i++){
         if(llama_decode(ctx,batch)!=0){text="ERROR:decode failed";break;}
         id=llama_sampler_sample(sampler,ctx,-1);
         if(llama_vocab_is_eog(vocab,id))break;
