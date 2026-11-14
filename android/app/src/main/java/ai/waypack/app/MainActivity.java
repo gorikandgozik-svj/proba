@@ -230,7 +230,9 @@ public final class MainActivity extends Activity {
         if(generated==null || generated.startsWith("ERROR:"))generated="";
         JSONArray items=new JSONArray();
         java.util.HashSet<Integer> seen=new java.util.HashSet<>();
-        java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?<!\\d)\\d{1,2}(?!\\d)").matcher(generated);
+        String clean=generated.trim();
+        boolean obeyedFormat=clean.matches("[1-9]\\s*[,;]\\s*[1-9]\\s*[,;]\\s*[1-9]");
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("[1-9]").matcher(obeyedFormat?clean:"");
         int aiSelections=0;
         while(m.find() && items.length()<3){
             int n=Integer.parseInt(m.group())-1;
