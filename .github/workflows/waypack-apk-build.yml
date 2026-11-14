@@ -73,17 +73,28 @@ jobs:
           set -euxo pipefail
           cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-llama-host -DGGML_OPENMP=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release >/dev/null
           cmake --build /tmp/waypack-llama-host --target llama-cli -j 4 >/dev/null
-          printf '%s\n' '<|im_start|>system' 'Ты помощник для поездок. Верни только JSON вида {"items":[{"name":"маска","qty":1,"category":"activity","reason":"плавание"}]}. /no_think' '<|im_end|>' '<|im_start|>user' 'Египет 7 дней, пляж. Предложи маску.' '<|im_end|>' '<|im_start|>assistant' '<think>' '' '</think>' '' > /tmp/waypack-prompt.txt
+          printf '%s\n' '<|im_start|>system' 'Ты помощник для поездок. Ответь кратко списком вещей в формате JSON, без рассуждений. /no_think' '<|im_end|>' '<|im_start|>user' 'Египет, 7 дней, пляж и снорклинг. Посоветуй полезные вещи.' '<|im_end|>' '<|im_start|>assistant' '<think>' '' '</think>' '' > /tmp/waypack-prompt.txt
           timeout 110 /tmp/waypack-llama-host/bin/llama-cli \
-            -m android/app/src/main/assets/qwen.gguf -ngl 0 -t 2 -c 1536 -n 140 \
-            --no-display-prompt -f /tmp/waypack-prompt.txt \
+            -m android/app/src/main/assets/qwen.gguf -ngl 0 -t 2 -c 1536 -n 330 \
+            --no-display-prompt --grammar-file android/tests/packlist.gbnf -f /tmp/waypack-prompt.txt \
             > /tmp/waypack-qwen-smoke.log 2>&1 || { tail -n 40 /tmp/waypack-qwen-smoke.log; exit 1; }
           python3 - <<'PY'
-          import pathlib
+          import json, pathlib, re
           raw=pathlib.Path('/tmp/waypack-qwen-smoke.log').read_text(errors='replace')
-          print('Real Qwen model responded, tail:',raw[-800:])
-          if '"items"' not in raw:
-              raise SystemExit('Model did not produce an items key in output')
+          print('Qwen model output tail:',raw[-1000:])
+          m=re.search(r'\{\s*"items"\s*:', raw)
+          if not m:
+              raise SystemExit('Missing generated JSON items object')
+          try:
+              data,end=json.JSONDecoder().raw_decode(raw[m.start():])
+          except json.JSONDecodeError as e:
+              raise SystemExit('Invalid generated JSON: '+str(e))
+          if not isinstance(data.get('items'),list) or not data['items']:
+              raise SystemExit('Model produced empty or malformed packing suggestions')
+          for item in data['items']:
+              if not isinstance(item,dict) or not all(k in item for k in ('name','qty','category','reason')):
+                  raise SystemExit('Invalid packing item schema')
+          print('PASS: real Qwen model generated parsed JSON with',len(data['items']),'travel items')
           PY
       - name: Compile native application
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
