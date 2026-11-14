@@ -17,11 +17,16 @@ import java.io.OutputStream;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.json.JSONObject;
+import android.view.HapticFeedbackConstants;
 
 /**
  * A standalone offline-first Android shell: all executable HTML/JS is packaged
  * inside the signed APK. No accounts, permissions, or secrets are required.
- * Remote AI is optional and may be enabled only by an HTTPS backend.
+ * Cloud Qwen inference is built-in through a documented anonymous HTTPS API;
+ * local rules work offline and no account is required.
  */
 public final class MainActivity extends Activity {
   private static final String APP_HOST = "appassets.androidplatform.net";
@@ -29,6 +34,7 @@ public final class MainActivity extends Activity {
   private static final int SAVE_TEXT = 420;
   private WebView view;
   private String textToSave = "";
+  private final ExecutorService aiWorker=Executors.newSingleThreadExecutor();
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
@@ -77,7 +83,40 @@ public final class MainActivity extends Activity {
       Collections.emptyMap(), new ByteArrayInputStream(new byte[0]));
   }
 
+
+  private void replyAI(String id,int status,JSONObject result) {
+    String serialized=result.toString();
+    runOnUiThread(() -> {
+      if(view!=null && !isFinishing()) {
+        view.evaluateJavascript("window.waypackCloudDone&&window.waypackCloudDone("+
+          JSONObject.quote(id)+","+status+","+JSONObject.quote(serialized)+")",null);
+      }
+    });
+  }
+
   public final class NativeBridge {
+
+    @JavascriptInterface public void haptic() {
+      runOnUiThread(() -> {
+        if(view!=null)view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+      });
+    }
+
+    @JavascriptInterface public void analyzeTrip(String id,String json) {
+      if(id==null||id.length()>90||json==null||json.length()>24000)return;
+      aiWorker.execute(() -> {
+        try {
+          JSONObject response=CloudAI.analyze(json);
+          replyAI(id,200,response);
+        } catch(Exception error) {
+          try {
+            replyAI(id,502,new JSONObject().put("error",
+              "Облачный ИИ временно недоступен. Базовый список уже готов."));
+          } catch(Exception ignored) {}
+        }
+      });
+    }
+
     @JavascriptInterface public void shareText(String raw) {
       if (raw == null) return;
       final String txt = raw.substring(0, Math.min(raw.length(), 300000));
@@ -123,6 +162,7 @@ public final class MainActivity extends Activity {
   }
 
   @Override protected void onDestroy() {
+    aiWorker.shutdownNow();
     if (view != null) {
       view.removeJavascriptInterface("WaypackNative");
       view.destroy();
