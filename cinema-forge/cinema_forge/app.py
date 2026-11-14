@@ -8,7 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 from datetime import datetime
 from .pipeline import Job, execute
 from .media import PROFILES
-from .cloud import MODEL
+from .cloud import MODEL, estimate_usd
 from .voices import get_voices, sync
 
 BG = '#0b101a'
@@ -20,9 +20,9 @@ CYAN = '#58dfcb'
 class Studio(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('CINEMA FORGE  •  AI Video Studio 0.1')
-        self.geometry('1030x770')
-        self.minsize(840, 660)
+        self.title('CINEMA FORGE  •  AI Video Studio 0.2')
+        self.geometry('1120x825')
+        self.minsize(940, 720)
         self.configure(bg=BG)
         self.pipe = queue.Queue()
         self.cancel = threading.Event()
@@ -36,6 +36,12 @@ class Studio(tk.Tk):
         self.dst = tk.StringVar(value=str(Path.home() / 'Videos' /
                  f'CINEMA_FORGE_{datetime.now():%Y%m%d_%H%M}.mp4'))
         self._build()
+        self.mode.trace_add('write', self._refresh_estimate)
+        self.model.trace_add('write', self._refresh_estimate)
+        self.profile.trace_add('write', self._refresh_estimate)
+        self._refresh_estimate()
+        self.bind('<Control-Return>', lambda _: self._start())
+        self.bind('<Escape>', lambda _: self._stop() if self.worker and self.worker.is_alive() else None)
         self.after(100, self._poll)
         self.protocol('WM_DELETE_WINDOW', self._close)
 
@@ -62,16 +68,30 @@ class Studio(tk.Tk):
                   foreground=[('readonly', INK)])
         style.configure('F.Horizontal.TProgressbar', background=CYAN,
                         troughcolor='#26354b', borderwidth=0)
-        root = tk.Frame(self, bg=BG, padx=28, pady=20)
-        root.pack(fill='both', expand=True)
+        # Scrollable layout keeps logs, costs and controls accessible on 1366x768 laptops.
+        shell = tk.Frame(self, bg=BG)
+        shell.pack(fill='both', expand=True)
+        canvas = tk.Canvas(shell, bg=BG, borderwidth=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(shell, orient='vertical', command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side='right', fill='y')
+        canvas.pack(side='left', fill='both', expand=True)
+        root = tk.Frame(canvas, bg=BG, padx=28, pady=15)
+        win = canvas.create_window((0, 0), window=root, anchor='nw')
+        root.bind('<Configure>', lambda _: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>', lambda e: canvas.itemconfigure(win, width=e.width))
+        self._scroll_canvas = canvas
+        canvas.bind_all('<MouseWheel>', self._wheel)
+        canvas.bind_all('<Button-4>', lambda _: canvas.yview_scroll(-3, 'units'))
+        canvas.bind_all('<Button-5>', lambda _: canvas.yview_scroll(3, 'units'))
         self._label(root, 'CINEMA  FORGE', size=28, color=CYAN, bold=True).pack(anchor='w')
-        self._label(root, 'AI CLIP PIPELINE   /   STORYBOARD  ·  VOICES  ·  RENDER',
-                    size=10, color=MUTED).pack(anchor='w', pady=(0, 18))
+        self._label(root, 'STUDIO v0.2   /   12 SCENES  ·  AI  ·  VOICES  ·  UHD EXPORT',
+                    size=10, color=MUTED).pack(anchor='w', pady=(0, 15))
 
         card = tk.Frame(root, bg=PANEL, padx=18, pady=14)
         card.pack(fill='x', pady=(0, 12))
         self._label(card, '01  ПРОМПТ ДЛЯ ФИЛЬМА', 11, CYAN, True).pack(anchor='w')
-        self.prompt = tk.Text(card, height=6, bg='#101824', fg=INK,
+        self.prompt = tk.Text(card, height=4, bg='#101824', fg=INK,
                               insertbackground=INK, relief='flat', wrap='word',
                               font=('Segoe UI', 12), padx=12, pady=9)
         self.prompt.pack(fill='x', pady=(9, 0))
@@ -103,6 +123,13 @@ class Studio(tk.Tk):
                        bg=PANEL, fg=INK, activebackground=PANEL, activeforeground=INK,
                        selectcolor=BG, font=('Segoe UI', 10)).grid(row=4, column=2, columnspan=2, sticky='w')
 
+        estimate_card = tk.Frame(root, bg='#142e3c', padx=15, pady=10)
+        estimate_card.pack(fill='x', pady=(0, 12))
+        self.estimate = tk.StringVar(value='')
+        self._label(estimate_card, 'СТАТУС ГЕНЕРАЦИИ', 10, CYAN, True).pack(anchor='w')
+        tk.Label(estimate_card, textvariable=self.estimate, fg=INK, bg='#142e3c',
+                 justify='left', anchor='w', font=('Segoe UI', 10), wraplength=950).pack(fill='x', pady=(5,0))
+
         dest = tk.Frame(root, bg=PANEL, padx=18, pady=12)
         dest.pack(fill='x', pady=(0, 12))
         self._label(dest, '03  СОХРАНИТЬ ВИДЕО В', 11, CYAN, True).pack(anchor='w')
@@ -118,11 +145,13 @@ class Studio(tk.Tk):
                                    bg=CYAN, fg='#0b1822', relief='flat',
                                    font=('Segoe UI', 13, 'bold'), padx=30, pady=11)
         self.start_btn.pack(side='left')
+        self._hover(self.start_btn, CYAN, '#a1f6e8')
         self.stop_btn = tk.Button(actions, text='■  ОТМЕНА', command=self._stop,
                                   bg='#49303c', fg='#ffd4dd', relief='flat',
                                   font=('Segoe UI', 11, 'bold'), padx=18, pady=13,
                                   state='disabled')
         self.stop_btn.pack(side='left', padx=10)
+        self._hover(self.stop_btn, '#49303c', '#69404f')
         tk.Button(actions, text='Проверить голоса', command=self._check_voices,
                   bg='#20324a', fg=INK, relief='flat', padx=15, pady=14).pack(side='right')
 
@@ -138,6 +167,30 @@ class Studio(tk.Tk):
         self.log.pack(fill='both', expand=True)
         self._write('Качество исходника зависит от AI-модели. 4K/60 при экспорте не означает 4K/60 исходных AI-кадров.')
         self._write('Preview создаёт анимированную графику; Cloud AI video требует оплачиваемый API.')
+        self._write('5 бесплатных облачных роликов/день и безлимит разработчика НЕ действуют: для этого нужен финансируемый сервис.')
+
+    def _wheel(self, event):
+        # Do not steal scrolling from editable multiline prompt or logs.
+        if event.widget not in (self.prompt, self.log):
+            self._scroll_canvas.yview_scroll(-int(event.delta / 120) * 3, 'units')
+
+    def _hover(self, button, base, active):
+        # Lightweight, low-overhead hover feedback on old CPUs.
+        button.bind('<Enter>', lambda _: button.configure(bg=active) if str(button['state']) != 'disabled' else None)
+        button.bind('<Leave>', lambda _: button.configure(bg=base))
+
+    def _refresh_estimate(self, *_):
+        if self.mode.get() == 'Cloud AI video':
+            try:
+                amount = estimate_usd(self.model.get(), 120)
+                self.estimate.set(f'AI-ГЕНЕРАЦИЯ · 120 секунд · ориентировочно ${amount:.2f} за 12 сцен. '
+                                  'Нужны собственный API-ключ и оплаченные кредиты. '
+                                  'Бесплатные облачные кредиты НЕ предоставляются.')
+            except ValueError:
+                self.estimate.set('Выбери доступную облачную модель.')
+        else:
+            self.estimate.set('БЕСПЛАТНО · Локальная анимированная графика, а НЕ AI-киносъёмка. '
+                              'На слабом ПК выбирай 720p/24. 4K/60 — тяжёлый экспорт.')
 
     def _browse(self):
         path = filedialog.asksaveasfilename(title='Сохранить MP4', defaultextension='.mp4',
@@ -168,8 +221,10 @@ class Studio(tk.Tk):
                                      'Без ключа доступен Preview — не AI-видео.')
                 return
             if not messagebox.askyesno('Платная AI-генерация',
-                'Будут отправлены 12 отдельных запросов по 10 секунд к платному API.\n'
-                'Расходы могут быть существенными. Продолжить?'):
+                f'Будут отправлены 12 запросов по 10 секунд.\n'
+                f'Ориентировочная цена генерации: ${estimate_usd(self.model.get(), 120):.2f}.\n'
+                'Оценка не включает повторные попытки, комиссии и другие услуги.\n'
+                'Продолжить платную генерацию?' ):
                 return
         elif self.profile.get() == '4K UHD / 60 FPS':
             if not messagebox.askyesno('Тяжёлый экспорт',
@@ -240,6 +295,9 @@ class Studio(tk.Tk):
             if not messagebox.askyesno('Отмена рендера', 'Остановить текущий рендер и закрыть программу?'):
                 return
             self.cancel.set()
+        self.unbind_all('<MouseWheel>')
+        self.unbind_all('<Button-4>')
+        self.unbind_all('<Button-5>')
         self.destroy()
 
 

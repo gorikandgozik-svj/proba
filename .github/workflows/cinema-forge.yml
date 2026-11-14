@@ -5,7 +5,7 @@ on:
       - cinema-forge
     paths:
       - 'cinema-forge/**'
-      - '.github/workflows/build-windows.yml'
+      - '.github/workflows/cinema-forge.yml'
   workflow_dispatch:
 permissions:
   contents: write
@@ -49,8 +49,8 @@ jobs:
         if: github.ref == 'refs/heads/cinema-forge'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: cinema-forge-v0.1.0
-          name: CINEMA FORGE v0.1.0 (Windows)
+          tag_name: cinema-forge-v0.2.0
+          name: CINEMA FORGE v0.2.0 (Windows)
           target_commitish: cinema-forge
           prerelease: true
           files: cinema-forge/dist/CINEMA_FORGE.exe

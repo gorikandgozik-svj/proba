@@ -35,3 +35,18 @@ def test_invalid_model_or_duration(tmp_path):
         cloud.generate('hi', 10, 'UNKNOWN', 'abc', tmp_path/'v.mp4')
     with pytest.raises(ValueError):
         cloud.generate('hi', 15, 'Kling 3.0 4K', 'abc', tmp_path/'v.mp4')
+
+
+def test_cost_estimate():
+    from decimal import Decimal
+    assert cloud.estimate_usd('Kling 3.0 4K',120) == Decimal('51.60')
+    assert cloud.estimate_usd('Kling 3.0 Standard 720p',120) == Decimal('10.80')
+    with pytest.raises(ValueError): cloud.estimate_usd('unknown',120)
+
+
+def test_kling_no_audio_payload(tmp_path):
+    sess = FakeSession([{'id':'id123'}, {'status':'FAILED','failure':'simulated'}])
+    with pytest.raises(cloud.CloudError):
+        cloud.generate('test',10,'Kling 3.0 Standard 720p','secret',tmp_path/'x.mp4',session=sess,sleep=lambda _:None)
+    assert sess.calls[0][2]['json']['audio'] is False
+    assert sess.calls[0][2]['json']['ratio'] == '1280:720'

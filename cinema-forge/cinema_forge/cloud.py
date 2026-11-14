@@ -10,8 +10,27 @@ API = 'https://api.dev.runwayml.com/v1'
 VERSION = '2024-11-06'
 MODEL = {
     'Kling 3.0 4K': ('kling3.0_4k', '3840:2160'),
+    'Kling 3.0 Pro 1080p': ('kling3.0_pro', '1920:1080'),
+    'Kling 3.0 Standard 720p': ('kling3.0_standard', '1280:720'),
     'Runway Gen-4.5 720p': ('gen4.5', '1280:720'),
 }
+
+# Official Runway Developer pricing, checked November 14, 2026.
+# These are indicative charges, not an account balance or provider guarantee.
+# Disabling model-native audio enables the lower Kling Standard/Pro prices.
+from decimal import Decimal
+USD_PER_SECOND = {
+    'Kling 3.0 4K': Decimal('0.43'),
+    'Kling 3.0 Pro 1080p': Decimal('0.12'),
+    'Kling 3.0 Standard 720p': Decimal('0.09'),
+    'Runway Gen-4.5 720p': Decimal('0.12'),
+}
+
+def estimate_usd(model_choice: str, duration: int = 120) -> Decimal:
+    if model_choice not in USD_PER_SECOND or not 1 <= duration <= 600:
+        raise ValueError('Неизвестная модель или недопустимая длительность.')
+    return USD_PER_SECOND[model_choice] * duration
+
 
 class CloudError(RuntimeError):
     pass
@@ -45,8 +64,11 @@ def generate(prompt: str, seconds: int, model_choice: str, api_key: str, output:
         # Deliberate simple 10s scene pipeline; API may support more with other models.
         raise ValueError('Для выбранного режима длительность сцены — 2–10 секунд.')
     model, ratio = MODEL[model_choice]
-    created = _request('POST', '/text_to_video', api_key,
-                       {'model': model, 'promptText': prompt[:3500], 'ratio': ratio, 'duration': seconds}, session=session)
+    payload = {'model': model, 'promptText': prompt[:1000], 'ratio': ratio, 'duration': seconds}
+    # The application generates its own narrator track: avoid paying for discarded audio.
+    if model.startswith('kling3.0_'):
+        payload['audio'] = False
+    created = _request('POST', '/text_to_video', api_key, payload, session=session)
     task_id = created.get('id')
     if not task_id:
         raise CloudError(f'Runway не вернул ID задачи: {str(created)[:300]}')

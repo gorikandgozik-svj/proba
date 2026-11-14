@@ -1,6 +1,14 @@
-# CINEMA FORGE 0.1 — Windows Desktop Video Studio
+# CINEMA FORGE 0.2 — Windows Desktop Video Studio
 
 A real Python desktop application to split **one prompt** into 12 shots, produce a 120-second timeline, synthesize narration, and export MP4. The cloud engine uses the **paid Runway Developer API** (including Kling 3.0 4K via Runway) for AI-generated footage. The no-key **Preview** engine produces animated title-card motion graphics and is **not AI camera footage**. There are no bundled video foundation model weights.
+
+## V0.2 — economic feasibility and weak PC support
+
+CINEMA FORGE **does not** provide 5 free 120-second 4K AI videos per user/day or free unlimited developer generation. That promise requires a funded service and high-end cloud GPUs. The server-side **reference quota ledger** (`cinema_forge/quota.py`) is tested for 5 reservations/day, idempotency and a trusted developer role, but **is not deployed or connected to generation**. Never trust a client-supplied developer/admin flag. The policy does not create compute capacity or credits.
+
+Official Runway prices checked November 14, 2026: Kling 3.0 4K = **$0.43/second** ($51.60 for 120 seconds); Standard 720p without native audio = **$0.09/second** ($10.80 for 120 seconds). 60 FPS is export frame rate, not genuine 60 FPS generated frames. Neither can run truly photorealistic 120s on CPU-only machines locally.
+
+The GUI exposes upfront cloud cost estimates, conservative no-audio API requests for Kling models, three Kling quality tiers, basic responsive buttons, keyboard shortcuts (Ctrl+Enter render, Escape cancel), and a warning that local output is motion graphics, not studio footage. Cost quotes can change without notice. Only live usage statements are authoritative.
 
 ## Status — read before downloading
 
