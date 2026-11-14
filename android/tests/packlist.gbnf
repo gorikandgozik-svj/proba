@@ -1,0 +1,5 @@
+root ::= "{" ws "\"items\"" ws ":" ws "[" ws (item ("," ws item)*)? "]" ws "}" ws
+item ::= "{" ws "\"name\"" ws ":" ws string "," ws "\"qty\"" ws ":" ws number "," ws "\"category\"" ws ":" ws string "," ws "\"reason\"" ws ":" ws string "}" ws
+string ::= "\"" ([^"\\\x7F\x00-\x1F] | "\\" (["\\bfnrt] | "u" [0-9a-fA-F]{4}))* "\"" ws
+number ::= [1-9] [0-9]? ws
+ws ::= | " " | "\n" [ \t]{0,20}
