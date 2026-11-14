@@ -175,6 +175,17 @@ public final class MainActivity extends Activity {
     }
 
     public final class NativeBridge {
+        @JavascriptInterface public void haptic() {
+            runOnUiThread(() -> {
+                try {
+                    android.os.Vibrator v=(android.os.Vibrator)getSystemService(VIBRATOR_SERVICE);
+                    if(v!=null && v.hasVibrator()){
+                        if(android.os.Build.VERSION.SDK_INT>=29) v.vibrate(android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_TICK));
+                        else v.vibrate(android.os.VibrationEffect.createOneShot(12,android.os.VibrationEffect.DEFAULT_AMPLITUDE));
+                    }
+                }catch(Exception ignored){}
+            });
+        }
         @JavascriptInterface public boolean isModelReady() {return modelReady;}
         @JavascriptInterface public void runQwen(String id,String payload) {
             if (id==null || id.length()>80 || payload==null || payload.length()>16000) return;
