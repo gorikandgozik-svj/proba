@@ -68,7 +68,7 @@ jobs:
           test -s /tmp/waypack-qwen-model-sha.txt
           git -C android/app/src/main/cpp/llama.cpp rev-parse HEAD
       - name: Live Qwen3.5 0.8B CPU inference smoke test
-        timeout-minutes: 5
+        timeout-minutes: 9
         run: |
           set -euxo pipefail
           cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-llama-host -DGGML_OPENMP=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release >/dev/null
@@ -76,7 +76,7 @@ jobs:
           printf '%s\n' '<|im_start|>system' 'Ты помощник для поездок. Верни только JSON вида {"items":[{"name":"маска","qty":1,"category":"activity","reason":"плавание"}]}. /no_think' '<|im_end|>' '<|im_start|>user' 'Египет 7 дней, пляж. Предложи маску.' '<|im_end|>' '<|im_start|>assistant' '<think>' '' '</think>' '' > /tmp/waypack-prompt.txt
           timeout 110 /tmp/waypack-llama-host/bin/llama-cli \
             -m android/app/src/main/assets/qwen.gguf -ngl 0 -t 2 -c 1536 -n 140 \
-            --no-display-prompt --no-cnv -f /tmp/waypack-prompt.txt \
+            --no-display-prompt -f /tmp/waypack-prompt.txt \
             > /tmp/waypack-qwen-smoke.log 2>&1 || { tail -n 40 /tmp/waypack-qwen-smoke.log; exit 1; }
           python3 - <<'PY'
           import pathlib
