@@ -69,9 +69,9 @@ jobs:
         run: |
           set -euxo pipefail
           cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-host -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF
-          cmake --build /tmp/waypack-host --target llama-cli --parallel 3
+          cmake --build /tmp/waypack-host --target llama-app --parallel 3
           PROMPT=$'<start_of_turn>user\nНазови три небольшие полезные вещи для поездки к морю, кроме паспорта и футболки. Ответь по-русски, только маркированными строками, без комментариев.\n<end_of_turn>\n<start_of_turn>model\n'
-          timeout 75s /tmp/waypack-host/bin/llama-cli -m android/app/src/main/assets/model.gguf \
+          timeout 75s /tmp/waypack-host/bin/llama cli -m android/app/src/main/assets/model.gguf \
             -p "$PROMPT" -n 80 -c 768 -t 2 --temp 0 --no-conversation --no-display-prompt \
             --no-show-timings --no-warmup > /tmp/waypack-gemma-output.txt 2>&1
           tail -n 30 /tmp/waypack-gemma-output.txt
