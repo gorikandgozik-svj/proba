@@ -68,7 +68,7 @@ jobs:
       - name: Smoke-test real Gemma inference on CPU
         run: |
           set -euxo pipefail
-          cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-host -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF
+          cmake -S android/app/src/main/cpp/llama.cpp -B /tmp/waypack-host -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF -DLLAMA_BUILD_UI=OFF
           cmake --build /tmp/waypack-host --target llama-app --parallel 3
           PROMPT=$'<start_of_turn>user\nНазови три небольшие полезные вещи для поездки к морю, кроме паспорта и футболки. Ответь по-русски, только маркированными строками, без комментариев.\n<end_of_turn>\n<start_of_turn>model\n'
           timeout 75s /tmp/waypack-host/bin/llama cli -m android/app/src/main/assets/model.gguf \
