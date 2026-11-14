@@ -5,6 +5,11 @@ on:
     paths:
       - 'android/**'
       - '.github/workflows/waypack-apk-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/waypack-apk-build.yml'
   workflow_dispatch:
 permissions:
   contents: write
