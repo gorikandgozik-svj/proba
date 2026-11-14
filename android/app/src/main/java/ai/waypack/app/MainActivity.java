@@ -12,6 +12,8 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
+import android.webkit.ConsoleMessage;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.ByteArrayInputStream;
@@ -53,7 +55,17 @@ public final class MainActivity extends Activity {
     settings.setJavaScriptCanOpenWindowsAutomatically(false);
     settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
     view.addJavascriptInterface(new NativeBridge(), "WaypackNative");
+    view.setWebChromeClient(new WebChromeClient() {
+      @Override public boolean onConsoleMessage(ConsoleMessage msg) {
+        android.util.Log.i("WAYPACK-JS",msg.messageLevel()+" "+msg.message()+" @"+msg.sourceId()+":"+msg.lineNumber());
+        return true;
+      }
+    });
     view.setWebViewClient(new WebViewClient() {
+      @Override public void onPageFinished(WebView webView, String url) {
+        webView.evaluateJavascript("(function(){return JSON.stringify({state:document.readyState,app:document.getElementById('app')?.innerHTML.length||0,url:location.href})})()", value ->
+          android.util.Log.i("WAYPACK-UI","WebView onPageFinished "+value));
+      }
       @Override public WebResourceResponse shouldInterceptRequest(WebView webView, WebResourceRequest request) {
         Uri uri = request.getUrl();
         if (!"https".equals(uri.getScheme()) || !APP_HOST.equals(uri.getHost())) return null;
