@@ -47,25 +47,23 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         getWindow().setStatusBarColor(Color.rgb(21,32,61));
         getWindow().setNavigationBarColor(Color.rgb(21,32,61));
-        TextView splash = new TextView(this);
-        splash.setText("✦ WAYPACK AI\n\nПроверяем лёгкую Gemma 3...\n\nЭто требуется только при первом запуске.");
-        splash.setTextColor(Color.rgb(25,34,61));
-        splash.setBackgroundColor(Color.rgb(246,247,251));
-        splash.setGravity(Gravity.CENTER);
-        splash.setTextSize(19);
-        splash.setPadding(32,32,32,32);
-        setContentView(splash);
+        // The interface MUST render immediately; 183 MB model extraction can
+        // take an arbitrary amount of time on a slow phone.
+        showWebApp();
         worker.execute(() -> {
             try {
-                if (libraryAvailable) {
-                    modelFile = prepareModel();
-                    modelReady = modelFile != null && modelFile.isFile();
+                if(libraryAvailable) {
+                    modelFile=prepareModel();
+                    modelReady=modelFile!=null&&modelFile.isFile();
                 }
-            } catch (Exception ex) {
-                android.util.Log.e("WAYPACK","Failed preparing local model",ex);
-                modelReady = false;
+            }catch(Exception ex) {
+                android.util.Log.e("WAYPACK","Optional AI model unavailable; fast packing still works",ex);
+                modelReady=false;
             }
-            runOnUiThread(this::showWebApp);
+            runOnUiThread(() -> {
+                if(modelReady&&view!=null&&!isFinishing()&&!isDestroyed())
+                    view.evaluateJavascript("window.waypackModelReady&&window.waypackModelReady()",null);
+            });
         });
     }
 
@@ -285,37 +283,60 @@ public final class MainActivity extends Activity {
                 }catch(Exception ignored){}
             });
         }
-        @JavascriptInterface public boolean isModelReady() {return modelReady;}
+        // The reliable recommendation engine is always ready, even if the
+        // optional language model is extracting, loading or failed.
+        @JavascriptInterface public boolean isModelReady(){return true;}
+        @JavascriptInterface public boolean isNeuralReady(){return modelReady&&modelFile!=null;}
+
         @JavascriptInterface public void runModel(String id,String payload) {
-            if (id==null || id.length()>80)return;
-            if(payload==null||payload.length()>16000){deliver(id,400,"{\"error\":\"Неверный запрос\"}");return;}
-            if (!modelReady || modelFile==null) {
-                deliver(id,503,"{\"error\":\"Модель Gemma не загружена\"}");
+            if(id==null||id.length()>80)return;
+            if(payload==null||payload.length()>16000){
+                deliver(id,400,"{\"error\":\"Неверный запрос\"}");
                 return;
             }
             final int serial=requestSerial.incrementAndGet();
-            worker.execute(() -> {
-                if(serial!=requestSerial.get())return;
-                try {
-                    JSONObject data=new JSONObject(payload);
-                    JSONObject profile=data.optJSONObject("profile");
-                    if(profile==null || !data.has("activities"))throw new IOException("Некорректные данные поездки");
-                    java.util.ArrayList<JSONObject> pool=vettedCandidates(data);
-                    if(pool.size()>9)pool=new java.util.ArrayList<>(pool.subList(0,9));
-                    JSONObject ready;
-                    if(pool.isEmpty()){
-                        ready=new JSONObject().put("items",new JSONArray())
-                            .put("model","Gemma 3 270M").put("realModel",false);
-                    } else {
-                        String generated=inferLocal(modelFile.getAbsolutePath(),makePrompt(data,pool));
-                        ready=selectedRecommendations(generated,pool);
-                    }
-                    if(serial==requestSerial.get())deliver(id,200,ready.toString());
-                } catch(Throwable e) {
-                    String msg=e.getMessage()==null?"Ошибка Gemma":e.getMessage();
-                    if(serial==requestSerial.get())deliver(id,502,"{\"error\":"+JSONObject.quote(msg.substring(0,Math.min(msg.length(),140)))+"}");
+            try {
+                JSONObject data=new JSONObject(payload);
+                if(data.optJSONObject("profile")==null||data.optJSONArray("activities")==null)
+                    throw new IOException("Некорректные данные поездки");
+                java.util.ArrayList<JSONObject> pool=vettedCandidates(data);
+                if(pool.size()>9)pool=new java.util.ArrayList<>(pool.subList(0,9));
+                final java.util.ArrayList<JSONObject> choices=pool;
+
+                // Respond IMMEDIATELY: this does not depend on model loading,
+                // inference speed, network, worker queue, or phone CPU class.
+                JSONObject instant=selectedRecommendations("",choices);
+                instant.put("model","WAYPACK Fast Engine");
+                instant.put("neuralPending",modelReady && modelFile!=null && !choices.isEmpty());
+                deliver(id,200,instant.toString());
+
+                // Optional language-model enrichment runs AFTER the response.
+                // A stalled model can never cause an application-level timeout.
+                if(modelReady&&modelFile!=null&&!choices.isEmpty()){
+                    final String modelPath=modelFile.getAbsolutePath();
+                    worker.execute(() -> {
+                        if(serial!=requestSerial.get())return;
+                        try{
+                            String generated=inferLocal(modelPath,makePrompt(data,choices));
+                            JSONObject enriched=selectedRecommendations(generated,choices);
+                            if(serial!=requestSerial.get()||enriched.optInt("selectedByAI",0)!=3)return;
+                            final String json=enriched.toString();
+                            runOnUiThread(() -> {
+                                if(serial==requestSerial.get()&&view!=null&&!isFinishing()&&!isDestroyed()){
+                                    String js="window.waypackNativeEnhance&&window.waypackNativeEnhance("+
+                                        JSONObject.quote(id)+","+JSONObject.quote(json)+")";
+                                    view.evaluateJavascript(js,null);
+                                }
+                            });
+                        }catch(Throwable err){
+                            android.util.Log.w("WAYPACK","Optional on-device AI skipped",err);
+                        }
+                    });
                 }
-            });
+            }catch(Throwable err){
+                String msg=err.getMessage()==null?"Ошибка данных поездки":err.getMessage();
+                deliver(id,400,"{\"error\":"+JSONObject.quote(msg.substring(0,Math.min(msg.length(),120)))+"}");
+            }
         }
         @JavascriptInterface public void shareText(String raw) {
             if (raw==null)return;
